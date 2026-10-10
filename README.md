@@ -7,6 +7,17 @@
 
 ---
 
+## 线上地址（GitHub Pages）
+
+- 正式地址：<https://xwupset.github.io/guoleme-web/>
+- 仓库：<https://github.com/xwupset/guoleme-web>
+- 托管方式：纯静态托管，`main` 分支根目录自动发布，**没有构建步骤**；`git push` 后约 1 分钟线上生效。
+- 线上是 HTTPS，所以「⚡ 一键读取剪贴板」在正式地址上同样可用（直接双击本地 `index.html` 才会退化成手动粘贴）。
+- 页面带 `noindex`，不会被搜索引擎收录。
+- 注意：**书签小工具要在正式地址上重新生成一次**，因为它会把生成时的网址写进代码。
+
+---
+
 ## 一、怎么运行
 
 ### 方式 1：本地静态服务器（推荐）
@@ -78,7 +89,7 @@ python -m http.server 8611
 | `#/demo-cart` | 自动把演示课程全部加入购物车 |
 | `#/demo-checkout` | 全选 + 开通会员 + 加购准分宝（≥90），直接进收银台 |
 
-例如：`http://127.0.0.1:8611/index.html#/demo-checkout`
+例如：<https://xwupset.github.io/guoleme-web/#/demo-checkout>
 
 > 正式演示前建议先补上安全验证（姓名 / 学号），这样整蛊弹窗才会显示真实信息。
 
