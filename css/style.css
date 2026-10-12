@@ -136,6 +136,8 @@ input, select, textarea { font: inherit; color: inherit; }
   font-size: 14px;
   transition: all 0.15s ease;
   text-align: center;
+  /* 移动端点按不再闪系统灰块，点击反馈统一交给 :active 与阴影 */
+  -webkit-tap-highlight-color: transparent;
 }
 .btn:hover { opacity: 0.9; transform: translateY(-1px); }
 .btn-primary { background: var(--brand); border-color: var(--brand); color: #fff; }
@@ -170,6 +172,10 @@ input, select, textarea { font: inherit; color: inherit; }
   position: relative;
   overflow: hidden;
 }
+/* 角标靶盘只是背景装饰：
+   1) pointer-events:none —— 它曾经压在「开始体验」按钮上面抢走点击，
+      导致按钮框里只有一小块能点中；
+   2) z-index:0 + 下面 .hero > * 的 z-index:1 —— 装饰永远垫在文字和按钮底下。 */
 .hero::after {
   content: "🎯";
   position: absolute;
@@ -178,7 +184,11 @@ input, select, textarea { font: inherit; color: inherit; }
   font-size: 150px;
   opacity: 0.14;
   transform: rotate(-12deg);
+  pointer-events: none;
+  z-index: 0;
 }
+/* 首页 hero 里的文字与按钮统一压在装饰层之上 */
+.hero > * { position: relative; z-index: 1; }
 .hero h1 { margin: 0 0 10px; font-size: 36px; line-height: 1.3; }
 .hero p { margin: 0 0 22px; max-width: 640px; font-size: 16px; opacity: 0.94; }
 .hero .btn { background: #fff; color: var(--brand); border: 0; font-weight: 600; }
@@ -704,7 +714,18 @@ ol li, ul li { margin: 4px 0; }
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
   letter-spacing: 1px;
 }
-.hero-cta:hover { transform: translateY(-1px); }
+/* hover / 按下都不位移元素本身：
+   位移会让 mousedown 与 mouseup 落在不同元素上，按钮边缘那 1px 的点击会被吞掉，
+   表现就是「看得见的按钮，点下去没反应」。反馈改用阴影和亮度做。 */
+.hero-cta:hover {
+  transform: none;
+  opacity: 1;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+.hero-cta:active {
+  transform: none;
+  filter: brightness(0.96);
+}
 
 /* 服务卡片整体可点 */
 .feature-link {
