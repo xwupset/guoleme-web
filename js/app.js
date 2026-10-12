@@ -43,28 +43,6 @@
     location.hash = route;
   }
 
-  function copyText(text) {
-    const okFn = function () { toast('已复制到剪贴板', 'ok'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(okFn).catch(function () { legacyCopy(text, okFn); });
-    } else { legacyCopy(text, okFn); }
-  }
-  function legacyCopy(text, okFn) {
-    const t = document.createElement('textarea');
-    t.value = text;
-    t.style.position = 'fixed';
-    t.style.top = '-1000px';
-    document.body.appendChild(t);
-    t.select();
-    try { document.execCommand('copy'); okFn(); }
-    catch (e) { toast('复制失败，请手动选择文本后复制', 'err'); }
-    t.remove();
-  }
-
-  function fmtCredit(n) {
-    return parseFloat((+n || 0).toFixed(2));
-  }
-
   function sanitizeCart() {
     const ids = new Set(S.courses.map(function (c) { return c.id; }));
     S.cart.courseIds = S.cart.courseIds.filter(function (id) { return ids.has(id); });
@@ -72,15 +50,16 @@
   }
 
   function setCourses(courses) {
-    S.courses = courses.map(function (c, i) {
+    S.courses = courses.map(function (c) {
       return {
         id: c.id || GuoLe.newCourseId(),
         name: String(c.name || '').trim(),
-        credit: parseFloat(c.credit) || 0,
         category: c.category || '',
-        source: c.source || '手动添加'
+        source: c.source || '手动添加',
+        teacher: c.teacher || '',
+        weeks: c.weeks || ''
       };
-    }).filter(function (c) { return c.name && c.credit > 0; });
+    }).filter(function (c) { return c.name; });
     S.cart.courseIds = [];
     sanitizeCart();
     GuoLe.save();
@@ -103,11 +82,13 @@
       '<label class="switch"><input type="checkbox" data-add-course="' + c.id + '"' + (inCart ? ' checked' : '') + '><span class="slider"></span></label>' +
       '<div style="flex:1">' +
       '<h4>' + GuoLe.esc(c.name) + '</h4>' +
-      '<div class="cc-sub">' + GuoLe.esc(c.category || '未分类') + ' · ' + fmtCredit(c.credit) + ' 学分 · 来源：' + GuoLe.esc(c.source || '手动') + '</div>' +
+      '<div class="cc-sub">' + GuoLe.esc(c.category || '未分类') +
+      (c.teacher ? ' · ' + GuoLe.esc(c.teacher) : '') +
+      ' · 来源：' + GuoLe.esc(c.source || '手动') + '</div>' +
       '</div></div>' +
       '<div class="cc-sub">🧐 ' + GuoLe.esc(pr.diff.tag) + '：' + GuoLe.esc(pr.diff.reason) + '</div>' +
       '<div class="price-line">' +
-      '<div><span class="price">' + GuoLe.money(pr.subtotal) + '</span> <span class="unit">（' + pr.unit + ' 元/学分 × ' + fmtCredit(c.credit) + ' 学分）</span></div>' +
+      '<div><span class="price">' + GuoLe.money(pr.subtotal) + '</span> <span class="unit">/ 门</span></div>' +
       '<button class="btn btn-ghost" data-del-course="' + c.id + '" title="从课表中移除">移除</button>' +
       '</div></div>'
     );
@@ -118,6 +99,7 @@
     '': { title: '首页', needSchool: false },
     'school': { title: '选择学校', needSchool: false },
     'portal': { title: '身份认证与课表导入', needSchool: true },
+    'import': { title: '导入课表', needSchool: false },
     'menu': { title: '选课菜单', needSchool: true },
     'cart': { title: '购物车', needSchool: true },
     'checkout': { title: '收银台', needSchool: true },
@@ -130,6 +112,9 @@
     return location.hash.replace(/^#\/?/, '').split('?')[0];
   }
 
+  /* 记录上一次渲染的路由，用来判断「是不是真的换页了」 */
+  let lastRenderedPath = null;
+
   function render() {
     const p = currentPath();
 
@@ -137,8 +122,9 @@
     const demoMap = {
       'demo-portal': { next: '#/portal', fillCart: false },
       'demo-menu': { next: '#/menu', fillCart: false },
+      /* 收银台已与购物车合并，这两个都指向 #/cart */
       'demo-cart': { next: '#/cart', fillCart: true },
-      'demo-checkout': { next: '#/checkout', fillCart: true }
+      'demo-checkout': { next: '#/cart', fillCart: true }
     };
     const demo = demoMap[p];
     if (demo) {
@@ -173,7 +159,11 @@
       a.classList.toggle('active', href === '#' + (p ? '/' + p : '/') || (p === '' && href === '#/'));
     });
     updateCartBadge();
-    window.scrollTo(0, 0);
+    /* 只有「真的换了页」才滚到顶部。
+       勾选课程 / 勾选准分宝 这类操作也会调 render() 重建整页，
+       如果每次都滚回顶部，用户往下滚着挑课就会被反复弹回最上面。 */
+    if (lastRenderedPath !== p) window.scrollTo(0, 0);
+    lastRenderedPath = p;
     afterRender[routeKey(p)] && afterRender[routeKey(p)]();
   }
 
@@ -187,32 +177,32 @@
       '<span class="kicker">课程作业 · 校园内测体验版</span>' +
       '<h1>期末补考，稳了？<br>过了么，一单到手 🎯</h1>' +
       '<p>选学校、认证、导入本学期课表、像点外卖一样下单——「过了么」把“补考护航”做成了一份随手可点的菜单。这是一个界面完整、剧情整蛊的课程作业项目。</p>' +
-      '<div class="btn-row"><a class="btn btn-lg" href="#/school">🚀 开始体验</a>' +
-      '<a class="btn btn-lg" style="background:rgba(255,255,255,.16);color:#fff;border-color:transparent" href="#/agreement">先读用户协议</a></div>' +
+      '<div class="btn-row"><a class="btn hero-cta" href="#/school">🚀 开始体验</a></div>' +
       '</section>' +
 
       '<h2 class="section-title">我们提供的服务<span class="line"></span></h2>' +
+      '<p class="small muted" style="margin:-4px 0 12px">点下面任意一项，直接开始体验 →</p>' +
       '<div class="grid">' +
-      '<div class="card feature"><div class="ico">📚</div><h3>补考护航</h3><p>承诺补考 ≥ 60 分；未达标“全额退费 + 补偿重修费”。</p></div>' +
-      '<div class="card feature"><div class="ico">💰</div><h3>按学分计费</h3><p>每学分 ¥99 起，难课/严师酌情少量加价，明码标价不玩套路。</p></div>' +
-      '<div class="card feature"><div class="ico">🛡️</div><h3>准分宝</h3><p>加价锁定 ≥ 80 / 85 / 90 / 95 的分数范围，买一份安心。</p></div>' +
-      '<div class="card feature"><div class="ico">🎓</div><h3>会员 49 元/学期</h3><p>每学分 95 折，还送“买三送一”：每满 3 学分免 1 学分费用。</p></div>' +
+      '<a class="card feature feature-link" href="#/school"><div class="ico">📚</div><h3>补考护航</h3><p>承诺补考 ≥ 60 分；未达标“全额退费 + 补偿重修费”。</p></a>' +
+      '<a class="card feature feature-link" href="#/school"><div class="ico">💰</div><h3>按门计费</h3><p>每门课 ¥' + CFG.COURSE_FEE + ' 起，难课/严师酌情少量加价，明码标价不玩套路。</p></a>' +
+      '<a class="card feature feature-link" href="#/school"><div class="ico">🛡️</div><h3>准分宝</h3><p>加价锁定 ≥ 80 / 85 / 90 / 95 的分数范围，买一份安心。</p></a>' +
+      '<a class="card feature feature-link" href="#/school"><div class="ico">🎓</div><h3>会员 ' + CFG.MEMBER_FEE + ' 元/学期</h3><p>95 折，还送“买三送一”：每选满 4 门免 1 门。</p></a>' +
       '</div>' +
 
       '<h2 class="section-title">一次完整的使用流程<span class="line"></span></h2>' +
       '<div class="card steps">' +
-      '<div class="step"><h3>选择学校</h3><p>当前演示版只适配了闽江学院，其它学校会提示“未找到 / 未适配”。</p></div>' +
-      '<div class="step"><h3>统一身份认证</h3><p>跳转到学校官方平台登录（密码只交给学校系统，本项目不接触）。</p></div>' +
-      '<div class="step"><h3>一键导入课程与学分</h3><p>进教务系统“选课信息”，复制一下，回来点“一键读取”，姓名、学号、课程、学分自动填好。</p></div>' +
-      '<div class="step"><h3>选课下单</h3><p>像饿了么一样勾选课程、加入购物车、享受会员优惠。</p></div>' +
-      '<div class="step"><h3>收银台结算</h3><p>微信/支付宝二选一，点“确认付款”后有整蛊彩蛋等你 🥚。</p></div>' +
+      '<div class="step"><h3>选择学校</h3><p>当前演示版只适配了闽江学院，点一下就能进入，其它学校会提示“未适配”。</p></div>' +
+      '<div class="step"><h3>一键打开教务系统</h3><p>我们直接把你送到教务系统，照着图文指引导出课表 PDF。</p></div>' +
+      '<div class="step"><h3>导入课表</h3><p>把导出的 PDF 交给本程序，课程和你的姓名学号会自动填好。</p></div>' +
+      '<div class="step"><h3>选课下单</h3><p>像饿了么一样勾选课程，享受会员优惠。</p></div>' +
+      '<div class="step"><h3>扫码结算</h3><p>微信/支付宝二选一，点“确认付款”后有整蛊彩蛋等你 🥚。</p></div>' +
       '</div>' +
 
       '<h2 class="section-title">学校支持<span class="line"></span></h2>' +
       '<div class="card school-result">' +
       '<p class="school-name">🏫 闽江学院</p>' +
-      '<p class="school-meta">当前唯一适配学校 · 支持统一身份认证引导导入</p>' +
-      '<div class="btn-row"><a class="btn btn-primary" href="#/school">选择学校开始</a>' +
+      '<p class="school-meta">当前唯一适配学校 · 支持一键导入课表</p>' +
+      '<div class="btn-row"><a class="btn btn-primary" href="#/school">选择学校开始 →</a>' +
       '<a class="btn" href="#/recruit">顺便看看墨客招募</a></div>' +
       '</div>' +
 
@@ -256,23 +246,50 @@
     return CFG.SCHOOL.alias.some(function (k) { return q.indexOf(k) >= 0; });
   }
 
+  /* 选中闽江学院并直接进入下一步（不再出现二级确认） */
+  function pickMju(from) {
+    S.school = { id: CFG.SCHOOL.id, name: CFG.SCHOOL.name };
+    GuoLe.save();
+    toast('已选择：闽江学院', 'ok');
+    go(from || '#/portal');
+  }
+
   routes['school'].render = function () {
+    const sc = CFG.SCHOOL;
     return (
       '<h1 class="page-title">选择学校</h1>' +
-      '<p class="page-sub">演示版内置搜索不做 AI，采用本地关键词匹配：输入含“闽江/闽/江”等字眼才会命中。输入其它学校则提示未适配。</p>' +
+      '<p class="page-sub">当前演示版只适配了 <strong>' + GuoLe.esc(sc.name) + '</strong>，点下面的按钮直接进入。</p>' +
+
+      /* 主角：超大的直接进入按钮 */
+      '<button class="school-pick" id="pick-mju-big">' +
+      '<span class="school-pick-logo">🏫</span>' +
+      '<span class="school-pick-body">' +
+      '<span class="school-pick-name">' + GuoLe.esc(sc.name) + '</span>' +
+      '<span class="school-pick-meta">福建福州 · 已适配 · 支持一键导入课表</span>' +
+      '</span>' +
+      '<span class="school-pick-go">进入 →</span>' +
+      '</button>' +
+
+      /* 次要：搜索其它学校（目前都会提示未适配） */
       '<div class="card">' +
+      '<h3 style="margin-top:0">搜索其它学校</h3>' +
+      '<p class="small muted">演示版采用本地关键词匹配，不接入 AI。目前只有闽江学院适配，搜其它学校会提示未适配。</p>' +
       '<div class="school-search">' +
       '<input id="school-q" type="search" placeholder="输入学校名称，例如：闽江学院" autocomplete="off">' +
       '<button class="btn btn-primary" id="school-go">搜索</button>' +
       '</div>' +
       '<div class="muted">💡 常见输入：<button class="btn btn-ghost" data-fill="闽江学院">闽江学院</button> <button class="btn btn-ghost" data-fill="闽江大学">闽江大学</button> <button class="btn btn-ghost" data-fill="闽">闽</button> <button class="btn btn-ghost" data-fill="江">江</button></div>' +
       '<div id="school-result" style="margin-top:16px"></div>' +
-      '</div>'
+      '</div>' +
+      '<div class="btn-row mt"><a class="btn" href="' + sc.officialUrl + '" target="_blank" rel="noopener">访问学校官网 ↗</a></div>'
     );
   };
   afterRender.school = function () {
     const input = $('#school-q');
     const resultBox = $('#school-result');
+
+    /* 大按钮：一步进入，不再二次确认 */
+    $('#pick-mju-big').addEventListener('click', function () { pickMju(); });
 
     function search() {
       const q = input.value;
@@ -281,27 +298,16 @@
         return;
       }
       if (schoolMatched(q)) {
-        resultBox.innerHTML =
-          '<div class="card school-result">' +
-          '<p class="school-name">🏫 ' + GuoLe.esc(CFG.SCHOOL.name) + '</p>' +
-          '<p class="school-meta">已适配 · 官方名称：闽江学院 · 所在地区：福建福州</p>' +
-          '<p class="small muted">下一步将引导你前往学校统一身份认证平台，导入本学期课程与学分。</p>' +
-          '<div class="btn-row">' +
-          '<button class="btn btn-primary" id="pick-mju">选择闽江学院，继续 →</button>' +
-          '<a class="btn" href="' + CFG.SCHOOL.officialUrl + '" target="_blank" rel="noopener">访问学校官网 ↗</a>' +
-          '</div></div>';
-        $('#pick-mju').addEventListener('click', function () {
-          S.school = { id: CFG.SCHOOL.id, name: CFG.SCHOOL.name };
-          GuoLe.save();
-          toast('已选择：闽江学院', 'ok');
-          go('#/portal');
-        });
+        /* 命中闽江学院 —— 直接进，不再二次确认 */
+        pickMju();
       } else {
         resultBox.innerHTML =
           '<div class="card school-miss">' +
           '<h3 style="margin:0 0 6px">😢 未找到或未适配</h3>' +
-          '<p style="margin:0">没有找到“' + GuoLe.esc(q.trim()) + '”对应的适配版本。<br>演示版目前仅支持 <strong>闽江学院</strong>；其它学校将在后续版本按需适配。</p>' +
+          '<p style="margin:0">没有找到“' + GuoLe.esc(q.trim()) + '”对应的适配版本。<br>演示版目前仅支持 <strong>' + GuoLe.esc(CFG.SCHOOL.name) + '</strong>；其它学校将在后续版本按需适配。</p>' +
+          '<div class="btn-row mt"><button class="btn btn-primary" id="miss-pick-mju">那就选闽江学院 →</button></div>' +
           '</div>';
+        $('#miss-pick-mju').addEventListener('click', function () { pickMju(); });
       }
     }
 
@@ -310,7 +316,6 @@
     $$('[data-fill]').forEach(function (b) {
       b.addEventListener('click', function () { input.value = b.getAttribute('data-fill'); search(); });
     });
-    input.focus();
     search();
   };
 
@@ -362,9 +367,9 @@
     const box = $('#imported-list');
     if (!box) return;
     if (!S.courses.length) { box.innerHTML = '<p class="muted">当前还没有导入任何课程。</p>'; return; }
-    box.innerHTML = '<p class="small muted">已导入 ' + S.courses.length + ' 门，共 ' + fmtCredit(S.courses.reduce(function (s, c) { return s + c.credit; }, 0)) + ' 学分：</p>' +
+    box.innerHTML = '<p class="small muted">已导入 ' + S.courses.length + ' 门课程：</p>' +
       S.courses.map(function (c) {
-        return '<div class="cart-line"><span class="l-name">' + GuoLe.esc(c.name) + '</span><span>' + fmtCredit(c.credit) + ' 学分 <button class="btn btn-ghost" data-del-import="' + c.id + '">✕</button></span></div>';
+        return '<div class="cart-line"><span class="l-name">' + GuoLe.esc(c.name) + '</span><span><button class="btn btn-ghost" data-del-import="' + c.id + '">✕</button></span></div>';
       }).join('');
     $$('[data-del-import]', box).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -379,10 +384,17 @@
     const existing = new Set(S.courses.map(function (c) { return c.name; }));
     const added = [];
     (list || []).forEach(function (c) {
-      if (!c || !c.name || !(c.credit > 0)) return;
+      if (!c || !c.name) return;
       if (existing.has(c.name)) return;
       existing.add(c.name);
-      const item = { id: GuoLe.newCourseId(), name: c.name, credit: c.credit, category: c.category || '', source: source || '一键读取' };
+      const item = {
+        id: GuoLe.newCourseId(),
+        name: c.name,
+        category: c.category || '',
+        source: source || '一键读取',
+        teacher: c.teacher || '',
+        weeks: c.weeks || ''
+      };
       S.courses.push(item);
       added.push(item);
     });
@@ -405,157 +417,49 @@
     return { identity: id, found: courses.length, added: added, skipped: courses.length - added.length };
   }
 
-  function ingestReportHtml(rep) {
-    if (!rep) return '';
-    const idOk = !!(rep.identity.name || rep.identity.sid);
-    let html = '';
-    if (idOk) {
-      html += '<div class="read-line ok">🙋 身份已读取：<strong>' + GuoLe.esc(rep.identity.name || '—') + '</strong> · 学号 ' + GuoLe.esc(rep.identity.sid || '—') + '　<span class="muted">已自动填入下方“安全验证”</span></div>';
-    }
-    if (rep.added.length) {
-      html += '<div class="read-line ok">📚 已导入 ' + rep.added.length + ' 门课程 · 共 ' + fmtCredit(rep.added.reduce(function (s, c) { return s + c.credit; }, 0)) + ' 学分<br><span class="muted">' +
-        GuoLe.esc(rep.added.map(function (c) { return c.name + '（' + fmtCredit(c.credit) + '）'; }).join('、')) + '</span></div>';
-    }
-    if (rep.skipped) html += '<div class="read-line">↺ 有 ' + rep.skipped + ' 门课程已经在课表里，已自动跳过</div>';
-    if (!idOk && !rep.added.length) {
-      html += '<div class="tip danger">这段文本里没有读到课程或身份信息。请确认复制的是<strong>“选课信息”</strong>那一页（能同时看到课程名称与学分），或者改用下面的“方法 A”粘贴。</div>';
-    }
-    if (idOk && rep.added.length) {
-      html += '<div class="btn-row mt"><button class="btn btn-primary btn-lg" id="oneshot-go">🎉 读取完成，进入选课菜单 →</button></div>';
-    }
-    return html;
-  }
-
-  function wireOneshotGo() {
-    const b = $('#oneshot-go');
-    if (b) b.addEventListener('click', function () { go('#/menu'); });
-  }
-
-  function readClipboardAndImport() {
-    const box = $('#oneshot-result');
-    const fallback = function (why) {
-      if (box) box.innerHTML = '<div class="tip warn">' + why + '</div>';
-      const ta = $('#paste-area');
-      if (ta) { ta.scrollIntoView({ behavior: 'smooth', block: 'center' }); ta.focus(); }
-    };
-    if (!navigator.clipboard || !navigator.clipboard.readText) {
-      fallback('当前打开方式不允许网页直接读取剪贴板（浏览器只在 https / localhost 下开放这个能力）。<br>请按 <code>Ctrl+V</code> 把课表粘到下面“方法 A”的输入框里，<strong>粘贴后会自动解析导入</strong>。');
-      return;
-    }
-    if (box) box.innerHTML = '<div class="tip">⏳ 正在读取剪贴板……</div>';
-    navigator.clipboard.readText().then(function (t) {
-      if (!t || !t.trim()) { fallback('剪贴板里没有文字。请先在教务系统页面复制“选课信息”表格，再回来点一次。'); return; }
-      const rep = ingestText(t, { source: '一键读取' });
-      if (box) { box.innerHTML = ingestReportHtml(rep); wireOneshotGo(); }
-      const ta = $('#paste-area');
-      if (ta) ta.value = '';
-      if (rep) toast('已读取 ' + rep.added.length + ' 门课程' + ((rep.identity.name || rep.identity.sid) ? '，身份信息已自动填入' : ''), 'ok');
-    }).catch(function () {
-      fallback('浏览器拒绝了读取剪贴板（未授权或非安全环境）。<br>请到下面“方法 A”的输入框按 <code>Ctrl+V</code> 粘贴，<strong>粘贴后会自动解析导入</strong>。');
-    });
-  }
-
-  function guideFloatHtml() {
-    return (
-      '<div class="guide-float" id="guide-float">' +
-      '<button class="guide-head" id="guide-toggle">📌 操作指引 · 点我展开／收起<span class="guide-caret">▾</span></button>' +
-      '<ol class="guide-body">' +
-      '<li>打开<strong>教务系统</strong>，用学号 + 密码登录</li>' +
-      '<li>进入 <strong>信息查询 → 查询个人信息 → 选课信息</strong></li>' +
-      '<li>学年选 <strong>2026-2027</strong> · 学期选 <strong>第 1 学期</strong></li>' +
-      '<li>表格上 <strong>Ctrl+A</strong> → <strong>Ctrl+C</strong> 复制</li>' +
-      '<li>回到本页点 <strong>⚡ 一键读取</strong>，读不到就直接粘贴</li>' +
-      '</ol>' +
-      '<button class="guide-x" id="guide-close" title="关闭指引">✕</button>' +
-      '</div>'
-    );
-  }
-
   function renderPortal() {
     const sc = CFG.SCHOOL;
-    const isFile = location.protocol === 'file:';
+    const hasCourses = S.courses.length > 0;
     return (
       '<h1 class="page-title">身份认证与课表导入</h1>' +
-      '<p class="page-sub">当前学校：<strong>' + GuoLe.esc(S.school ? S.school.name : sc.name) + '</strong> · 目标：拿到“本学期课程 + 学分”清单，用于生成下单菜单。</p>' +
+      '<p class="page-sub">当前学校：<strong>' + GuoLe.esc(S.school ? S.school.name : sc.name) + '</strong></p>' +
 
-      '<div class="stepper">' +
-      '<div class="s now">① 登录教务系统</div>' +
-      '<div class="s">② 打开“选课信息”</div>' +
-      '<div class="s">③ 一键读取</div>' +
-      '<div class="s">④ 选课下单</div>' +
-      '</div>' +
+      /* ① 一键打开教务系统（在「去导入课表」之上） */
+      '<div class="card imp-primary" id="open-jw-card">' +
+      '<h3 style="margin-top:0">🌐 第一步：打开教务系统，把课表导出成 PDF</h3>' +
+      '<a class="btn btn-primary btn-block btn-xl" href="' + sc.jwUrl + '" target="_blank" rel="noopener" id="open-jw">🚀 一键打开教务系统获取课表 ↗</a>' +
+      '<p class="small muted mt">用学号密码登录后，照着下面三步走（点「回到本页」后我们会提醒你导入）：</p>' +
 
-      '<div class="card oneshot" id="oneshot-card">' +
-      '<h3 style="margin-top:0">⚡ 一键读取课表（推荐）</h3>' +
-      '<p class="small muted">不用自己翻找课程、不用逐行核对。照着下面几步做，最后回到本页点一下按钮，<strong>姓名、学号、课程、学分</strong>会一次性自动填好。</p>' +
-      '<ol class="guide-steps">' +
-      '<li>点下面的按钮打开教务系统，用学号 + 密码登录；</li>' +
-      '<li>顶部菜单进入 <strong>信息查询 → 查询个人信息 → 选课信息</strong>；</li>' +
-      '<li>把<strong>学年</strong>选成 <strong>2026-2027</strong>、<strong>学期</strong>选成 <strong>第 1 学期</strong>，等表格刷出来；</li>' +
-      '<li>在表格区域按 <strong>Ctrl+A</strong> 全选、<strong>Ctrl+C</strong> 复制（手机上是长按表格 → 全选 → 复制）；</li>' +
-      '<li>回到本页，点下面的 <strong>⚡ 一键读取</strong>。</li>' +
+      '<ol class="jw-steps">' +
+      '<li>点开页面<strong>右上角</strong>的菜单按钮' +
+      '<span class="jw-icon-line">' +
+      '<span class="jw-icon-demo" aria-label="右上角菜单按钮">' +
+      '<span class="jw-icon-bar"></span><span class="jw-icon-bar"></span><span class="jw-icon-bar"></span>' +
+      '</span>' +
+      '<span class="jw-icon-note">← 就是这个</span>' +
+      '</span></li>' +
+      '<li>依次点击 <strong>信息查询</strong> → <strong>个人课表查询</strong></li>' +
+      '<li>页面上会有一个<strong>输出 PDF</strong> 的按钮，点它把课表存到手机里</li>' +
       '</ol>' +
-      '<div class="btn-row">' +
-      '<button class="btn btn-primary btn-lg" id="oneshot-read">⚡ 一键读取（读取剪贴板）</button>' +
-      '<a class="btn btn-lg" href="' + sc.xkxxUrl + '" target="_blank" rel="noopener">🔗 直达“选课信息”页 ↗</a>' +
-      '<a class="btn" href="' + sc.portalUrl + '" target="_blank" rel="noopener">统一身份认证 ↗</a>' +
-      '<a class="btn" href="' + sc.jwUrl + '" target="_blank" rel="noopener">教务系统登录页 ↗</a>' +
-      '</div>' +
-      '<div id="oneshot-result" class="mt"></div>' +
-      '<div class="tip small">读不到也没关系：下面的<strong>方法 A</strong>支持直接粘贴（粘贴即自动解析），<strong>方法 B</strong>可以手动添加或载入演示课表；右上角的“操作指引”会全程跟着你。</div>' +
+
+      '<div class="tip">🔐 账号密码只在闽江学院官方页面输入，由学校系统处理。<strong>本程序不接触、不保存、不上传你的密码</strong>。</div>' +
       '</div>' +
 
-      '<div class="card">' +
-      '<h3 style="margin-top:0">① 打开学校统一身份认证平台</h3>' +
-      '<p class="small muted">推荐入口：' + GuoLe.esc(sc.portalName) + '（支持账号密码 / 微信扫码）</p>' +
-      '<div class="btn-row">' +
-      '<a class="btn btn-primary" href="' + sc.portalUrl + '" target="_blank" rel="noopener">打开 ' + GuoLe.esc(sc.portalName) + ' ↗</a>' +
-      '<a class="btn" href="' + sc.jwUrl + '" target="_blank" rel="noopener">教务系统（需校园网）↗</a>' +
-      '<a class="btn" href="' + sc.jwOuterUrl + '" target="_blank" rel="noopener">教务系统校外入口 ↗</a>' +
-      '</div>' +
-      '<div class="tip">🔐 账号密码只在闽江学院官方页面输入，由学校系统处理。<strong>本程序不接触、不保存、不上传你的密码</strong>，登录状态也只保留在浏览器里。</div>' +
-      '</div>' +
-
-      '<div class="card">' +
-      '<h3 style="margin-top:0">② 登录后，打开“选课信息”</h3>' +
-      '<div class="tip success">最稳的一条路径（教务系统 V9.0）：<strong>信息查询 → 查询个人信息 → 选课信息</strong>。<br>把<strong>学年</strong>选成 <strong>2026-2027</strong>、<strong>学期</strong>选成 <strong>第 1 学期</strong>，表格里就会给出每门课的<strong>课程名称</strong>与<strong>学分</strong>，以及你的<strong>姓名</strong>和<strong>学号</strong>。</div>' +
-      '<ol class="small">' +
-      '<li>在 <code>' + GuoLe.esc(sc.portalName) + '</code> 登录后，点击“教务管理系统”（若你直接用教务入口，跳过本步）；</li>' +
-      '<li>依次点击 <strong>信息查询 → 查询个人信息 → 选课信息</strong>；</li>' +
-      '<li>把学年 / 学期切换到<strong>本学期</strong>，确认表格里能看到课程名称与学分；</li>' +
-      '<li>在表格上 <code>Ctrl+A</code> 全选、<code>Ctrl+C</code> 复制，然后回来点“⚡ 一键读取”。</li>' +
-      '</ol>' +
-      '<div class="btn-row"><a class="btn btn-primary" href="' + sc.xkxxUrl + '" target="_blank" rel="noopener">🔗 打开“选课信息”页 ↗</a>' +
-      '<a class="btn" href="' + sc.kbUrl + '" target="_blank" rel="noopener">课表查询页 ↗</a>' +
-      '<button class="btn btn-ghost" id="portal-done">✅ 我已经复制好了</button></div>' +
-      '</div>' +
-
-      '<div class="card" id="import-panel">' +
-      '<h3 style="margin-top:0">③④ 把课程导进来</h3>' +
-      '<div class="grid grid-2">' +
-      '<div class="card" style="box-shadow:none">' +
-      '<h4 style="margin-top:0">方法 A：粘贴文本（自动解析）</h4>' +
-      '<p class="small muted">把复制的教务系统内容粘进来：<strong>一粘贴就会自动识别并导入</strong>；想逐门核对，可以点“预览 / 手动挑选”。</p>' +
-      '<textarea class="import-box" id="paste-area" placeholder="在这里 Ctrl+V 粘贴“选课信息”表格内容……（粘贴后自动解析）"></textarea>' +
-      '<div class="btn-row mt"><button class="btn" id="parse-btn">🔍 预览 / 手动挑选</button>' +
-      '<button class="btn btn-ghost" id="clear-paste">清空</button></div>' +
-      '<div id="parse-result" style="margin-top:12px"></div>' +
-      '</div>' +
-      '<div class="card" style="box-shadow:none">' +
-      '<h4 style="margin-top:0">方法 B：演示课表 / 手动添加</h4>' +
-      '<p class="small muted">在教室演示、没有校园网、或想快速体验完整下单流程时，可一键载入演示课表；也可以逐门手动添加。</p>' +
-      '<div class="btn-row"><button class="btn btn-warn" id="load-demo">🎒 载入演示课表（7 门）</button>' +
-      '<button class="btn btn-danger" id="clear-courses">清空已导入课程</button></div>' +
-      '<hr>' +
-      '<div class="manual-row"><input id="m-name" placeholder="课程名称，如：高等数学A"><input id="m-credit" type="number" min="0.1" step="0.05" placeholder="学分"><button class="btn" id="m-add">添加</button></div>' +
-      '<div id="imported-list"></div>' +
-      '</div>' +
-      '</div>' +
+      /* ② 去导入（切回来会高亮这一块） */
+      '<div class="card" id="go-import-card">' +
+      '<h3 style="margin-top:0">📥 第二步：把刚下载的课表导进来</h3>' +
+      '<p class="small muted">导入时会<strong>自动识别你的姓名和学号</strong>，你只需要核对课程。</p>' +
+      '<a class="btn btn-primary btn-block btn-xl" href="#/import" id="go-import">去导入课表 →</a>' +
+      (hasCourses
+        ? '<p class="small ok-text mt">✓ 当前已导入 ' + S.courses.length + ' 门课程</p>'
+        : '<p class="small muted mt">还没有导入任何课程。</p>') +
       '</div>' +
 
       '<div class="card" id="verify-card">' +
       '<h3 style="margin-top:0">🔐 安全验证（必填）</h3>' +
-      '<p class="small muted">请填写你的<strong>真实姓名</strong>与<strong>学号</strong>。信息只保存在你自己的浏览器里（localStorage），不会上传到任何服务器；用于核对订单身份、生成订单凭证。</p>' +
+      '<p class="small muted">请填写你的<strong>真实姓名</strong>与<strong>学号</strong>。' +
+      '如果刚才在导入页上传了课表 PDF，<strong>这两项已经自动填好了</strong>。' +
+      '信息只保存在你自己的浏览器里（localStorage），不会上传到任何服务器。</p>' +
       '<div class="verify-grid">' +
       '<label><span>姓名 <b class="req">*</b></span><input id="id-name" autocomplete="off" placeholder="请输入姓名"></label>' +
       '<label><span>学号 <b class="req">*</b></span><input id="id-sid" autocomplete="off" inputmode="numeric" placeholder="请输入学号"></label>' +
@@ -566,29 +470,17 @@
 
       '<div class="card">' +
       '<details>' +
-      '<summary style="cursor:pointer">🧩 进阶玩法：书签小工具（在教务系统页面里一键提取）</summary>' +
-      '<div style="margin-top:10px">' +
-      '<p class="small muted">把下面这个按钮<strong>拖到浏览器书签栏</strong>（手机上：复制代码 → 新建书签 → 把代码粘到网址栏）。<br>之后在教务系统的页面上点一下这个书签，它会自动抓取页面里的课程与学分，并跳回本程序完成导入——这是纯网页能做到的最接近“全自动拉取”的方案。</p>' +
-      '<a class="btn btn-warn" id="bm-link" href="javascript:void(0)" draggable="true">📎 过了么 · 一键提取课表</a>' +
-      '<div class="btn-row mt"><button class="btn" id="bm-copy">📋 复制书签代码</button></div>' +
-      '<textarea class="import-box bm-code" id="bm-code" readonly></textarea>' +
-      (isFile ? '<div class="tip warn">检测到你现在是<strong>直接双击打开文件（file://）</strong>：浏览器不允许从学校网站跳回本地文件，书签小工具在这个模式下无法自动跳回。请改用上面的“⚡ 一键读取”，或者把项目用本地服务器 / 网址方式打开后再用书签。</div>' : '') +
+      '<summary style="cursor:pointer">🛠 手动添加 / 载入演示课表（没网或演示时用）</summary>' +
+      '<div style="margin-top:12px">' +
+      '<div class="btn-row"><button class="btn btn-warn" id="load-demo">🎒 载入演示课表（7 门）</button>' +
+      '<button class="btn btn-danger" id="clear-courses">清空已导入课程</button></div>' +
+      '<hr>' +
+      '<div class="manual-row"><input id="m-name" placeholder="课程名称，如：高等数学A"><button class="btn" id="m-add">添加</button></div>' +
+      '<div id="imported-list"></div>' +
       '</div></details>' +
       '</div>' +
 
-      '<div class="card">' +
-      '<details>' +
-      '<summary style="cursor:pointer">🧪 在页面内打开学校官网（实验性，可能被学校安全策略拦截）</summary>' +
-      '<div style="margin-top:10px">' +
-      '<iframe id="portal-frame" src="' + sc.portalUrl + '" style="width:100%;height:430px;border:1px solid #e5e6eb;border-radius:10px;background:#fff"></iframe>' +
-      '<p class="muted mt">如果上方空白或提示“拒绝连接”，说明学校网站禁止被嵌入（浏览器安全策略），请改用上方“新窗口打开”。<br>即使嵌入成功，受浏览器同源策略限制，本程序也<strong>无法读取页面内的登录后内容</strong>——所以请配合“⚡ 一键读取”或“方法 A”使用。</p>' +
-      '</div></details>' +
-      '</div>' +
-
-      '<div class="btn-row mt"><button class="btn btn-primary btn-lg" id="to-menu">📋 保存并进入选课菜单</button>' +
-      '<a class="btn btn-lg" href="#/school">← 重选学校</a></div>' +
-
-      guideFloatHtml()
+      '<div class="btn-row mt"><button class="btn btn-primary btn-lg" id="to-menu">📋 保存并进入选课菜单</button></div>'
     );
   }
 
@@ -596,6 +488,15 @@
   afterRender.portal = function () {
     syncIdentityInputs();
     renderImportedList();
+
+    /* 「一键打开教务系统」→ 记录我们把人送出去了，
+       等他回来（visibilitychange）就把「去导入课表」高亮出来。 */
+    const openJw = $('#open-jw');
+    if (openJw) {
+      openJw.addEventListener('click', function () {
+        try { sessionStorage.setItem('glm_left_for_jw', '1'); } catch (e) { /* 隐私模式忽略 */ }
+      });
+    }
 
     /* 安全验证：离开输入框（blur）即自动保存 */
     ['id-name', 'id-sid'].forEach(function (id) {
@@ -606,102 +507,17 @@
       el.addEventListener('keydown', function (e) { if (e.key === 'Enter') el.blur(); });
     });
 
-    /* ⚡ 一键读取 */
-    const readBtn = $('#oneshot-read');
-    if (readBtn) readBtn.addEventListener('click', readClipboardAndImport);
-
-    /* 方法 A：粘贴即自动解析导入 */
-    const pasteArea = $('#paste-area');
-    if (pasteArea) {
-      pasteArea.addEventListener('paste', function () {
-        setTimeout(function () {
-          const rep = ingestText(pasteArea.value, { source: '粘贴解析' });
-          if (!rep) return;
-          const out = $('#parse-result');
-          if (out) out.innerHTML = ingestReportHtml(rep);
-          wireOneshotGo();
-          if (rep.added.length) toast('已自动解析并导入 ' + rep.added.length + ' 门课程', 'ok');
-        }, 40);
-      });
-    }
-
-    const doneBtn = $('#portal-done');
-    if (doneBtn) doneBtn.addEventListener('click', function () {
-      const card = $('#oneshot-card');
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      readClipboardAndImport();
-    });
-
-    /* 方法 A：预览 / 手动挑选 */
-    function showPreview() {
-      const text = pasteArea ? pasteArea.value : '';
-      if (!text.trim()) { toast('请先粘贴课表内容', 'err'); return; }
-      pendingCourses = GuoLeParser.parseCourseText(text);
-      const out = $('#parse-result');
-      if (!out) return;
-      if (!pendingCourses.length) {
-        out.innerHTML = '<div class="tip danger">没有识别到“课程名 + 学分”的组合。请确认复制的内容包含课程名称与学分；也可以点上面的“⚡ 一键读取”，或用“手动添加”。</div>';
-        return;
-      }
-      let html = '<p class="small muted">识别到 ' + pendingCourses.length + ' 条候选，请核对并勾选：</p>' +
-        '<table class="import-table"><tr><th>✓</th><th>课程名称（可改）</th><th>学分（可改）</th><th>来源行</th></tr>';
-      pendingCourses.forEach(function (c, i) {
-        html += '<tr><td><input type="checkbox" data-pick="' + i + '" checked></td>' +
-          '<td><input data-pname="' + i + '" value="' + GuoLe.esc(c.name) + '"></td>' +
-          '<td><input data-pcredit="' + i + '" type="number" min="0.1" step="0.05" value="' + c.credit + '" style="width:90px"></td>' +
-          '<td class="muted">' + GuoLe.esc(c.rawLine || '') + '</td></tr>';
-      });
-      html += '</table><div class="btn-row mt"><button class="btn btn-primary" id="confirm-import">导入勾选的课程</button>' +
-        '<button class="btn" id="pick-all">全选 / 全不选</button></div>';
-      out.innerHTML = html;
-
-      $('#pick-all').addEventListener('click', function () {
-        const boxes = $$('[data-pick]');
-        const someOff = boxes.some(function (b) { return !b.checked; });
-        boxes.forEach(function (b) { b.checked = someOff; });
-      });
-      $('#confirm-import').addEventListener('click', function () {
-        let picked = [];
-        $$('[data-pick]').forEach(function (b) {
-          if (!b.checked) return;
-          const i = parseInt(b.getAttribute('data-pick'), 10);
-          const base = pendingCourses[i];
-          const name = $('[data-pname="' + i + '"]').value.trim();
-          const credit = parseFloat($('[data-pcredit="' + i + '"]').value);
-          if (name && credit > 0) {
-            picked.push({ name: name, credit: credit, category: (base && base.category) || '', source: '粘贴解析' });
-          }
-        });
-        if (!picked.length) { toast('没有选中任何有效课程', 'err'); return; }
-        const added = mergeCourses(picked, '粘贴解析');
-        if (added.length !== picked.length) toast('已跳过 ' + (picked.length - added.length) + ' 门同名课程');
-        if (!added.length) { toast('所选课程都已在课表中', 'err'); return; }
-        pendingCourses = [];
-        out.innerHTML = '';
-        if (pasteArea) pasteArea.value = '';
-        renderImportedList();
-        toast('成功导入 ' + added.length + ' 门课程', 'ok');
-      });
-    }
-    if ($('#parse-btn')) $('#parse-btn').addEventListener('click', showPreview);
-
-    if ($('#clear-paste')) $('#clear-paste').addEventListener('click', function () {
-      if (pasteArea) pasteArea.value = '';
-      pendingCourses = [];
-      $('#parse-result').innerHTML = '';
-    });
-
-    /* 方法 B：演示课表 / 手动添加 / 清空 */
+    /* 方法 A/B：演示课表 / 手动添加 / 清空（导课页折叠区里） */
     if ($('#load-demo')) $('#load-demo').addEventListener('click', function () {
       openModal(
         '载入演示课表？',
-        '<p>将用 7 门示例课程（共 21 学分）替换当前已导入课程，方便课堂演示与完整流程体验。</p>',
+        '<p>将用 7 门示例课程替换当前已导入课程，方便课堂演示与完整流程体验。</p>',
         '<button class="btn btn-primary" data-ok>载入</button><button class="btn" data-close>取消</button>'
       );
       $('[data-ok]').addEventListener('click', function () {
         setCourses(GuoLe.demoCourses());
         closeModal(); renderImportedList();
-        toast('已载入演示课表（21 学分）', 'ok');
+        toast('已载入演示课表（7 门）', 'ok');
       });
     });
 
@@ -713,35 +529,44 @@
 
     if ($('#m-add')) $('#m-add').addEventListener('click', function () {
       const name = $('#m-name').value.trim();
-      const credit = parseFloat($('#m-credit').value);
-      if (!name || !(credit > 0)) { toast('请填写课程名称和有效学分', 'err'); return; }
-      const added = mergeCourses([{ name: name, credit: credit }], '手动添加');
-      $('#m-name').value = ''; $('#m-credit').value = '';
+      if (!name) { toast('请填写课程名称', 'err'); return; }
+      const added = mergeCourses([{ name: name }], '手动添加');
+      $('#m-name').value = '';
       renderImportedList();
       toast(added.length ? '已添加：' + name : '该课程已在课表中', added.length ? 'ok' : 'err');
     });
 
-    /* 🧩 书签小工具 */
-    const bmCode = 'javascript:' + GuoLeParser.buildBookmarklet(location.href.split('#')[0]);
-    const bmLink = $('#bm-link');
-    const bmText = $('#bm-code');
-    if (bmText) bmText.value = bmCode;
-    if (bmLink) {
-      bmLink.setAttribute('href', bmCode);
-      bmLink.addEventListener('click', function (e) {
-        e.preventDefault();
-        toast('请把这个按钮拖到浏览器书签栏；手机端请点“复制书签代码”后新建书签', 'ok');
-      });
+    /* 回到本页：把「去导入课表」高亮出来。
+       纯网页能感知「用户切走了又切回来」—— 用 document.visibilityState。 */
+    function highlightImportCard() {
+      const card = document.getElementById('go-import-card');
+      if (!card) return;
+      card.classList.add('flash-import');
+      const btn = document.getElementById('go-import');
+      if (btn) {
+        btn.classList.add('pulse');
+        try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
+      }
+      toast('课表下载好了吗？点「去导入课表」就能导入 →', 'ok');
     }
-    if ($('#bm-copy')) $('#bm-copy').addEventListener('click', function () { copyText(bmCode); });
 
-    /* 悬浮操作指引 */
-    const gf = $('#guide-float');
-    if (gf) {
-      if (window.innerWidth < 720) gf.classList.add('collapsed');
-      if ($('#guide-toggle')) $('#guide-toggle').addEventListener('click', function () { gf.classList.toggle('collapsed'); });
-      if ($('#guide-close')) $('#guide-close').addEventListener('click', function () { gf.remove(); });
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return;
+      let left = false;
+      try { left = sessionStorage.getItem('glm_left_for_jw') === '1'; } catch (e) { left = false; }
+      if (!left) return;
+      try { sessionStorage.removeItem('glm_left_for_jw'); } catch (e) { /* ignore */ }
+      // 稍等一下再做高亮，避免和浏览器恢复页面打架
+      setTimeout(highlightImportCard, 400);
     }
+    /* 每次进本页都会重新绑定，先把上一轮的摘掉，避免监听器堆积 */
+    if (window.__glmVisHandler) {
+      document.removeEventListener('visibilitychange', window.__glmVisHandler);
+      window.removeEventListener('focus', window.__glmVisHandler);
+    }
+    window.__glmVisHandler = onVisible;
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
 
     /* 进入菜单（先卡安全验证，再卡课程） */
     $('#to-menu').addEventListener('click', function () {
@@ -778,28 +603,36 @@
       go('#/menu');
     });
   };
+  /* ================= 导入课表（手机优先，见 js/importui.js） ================= */
+  routes['import'].render = function () {
+    if (window.GuoLeImportUI) return window.GuoLeImportUI.render();
+    return '<div class="card empty"><div class="big">📥</div><p>导入模块未加载。</p></div>';
+  };
+  afterRender.import = function () {
+    if (window.GuoLeImportUI) window.GuoLeImportUI.mount();
+  };
+
   /* ================= 选课菜单 ================= */
   routes['menu'].render = function () {
     const memberOn = S.membership.active || S.cart.wantsMember;
     const sel = S.courses.filter(function (c) { return S.cart.courseIds.includes(c.id); });
-    const selCredits = fmtCredit(sel.reduce(function (s, c) { return s + c.credit; }, 0));
     const selMoney = GuoLe.round2(sel.reduce(function (s, c) { return s + GuoLe.coursePricing(c).subtotal; }, 0));
     let body;
     if (!S.courses.length) {
-      body = '<div class="card empty"><div class="big">🎒</div><p>还没有导入课程。</p><a class="btn btn-primary" href="#/portal">去身份认证并导入课表 →</a></div>';
+      body = '<div class="card empty"><div class="big">🎒</div><p>还没有导入课程。</p><a class="btn btn-primary" href="#/portal">去导入课表 →</a></div>';
     } else {
       body = '<div class="grid">' + S.courses.map(courseCardHtml).join('') + '</div>' +
-        '<div class="sticky-bar"><div class="info">已选 <b>' + S.cart.courseIds.length + '</b> 门 · ' + selCredits + ' 学分 · 小计 ' + GuoLe.money(selMoney) + '</div>' +
-        '<div class="btn-row"><a class="btn" href="#/cart">查看购物车</a><a class="btn btn-primary" href="#/cart">去结算 →</a></div></div>';
+        '<div class="sticky-bar"><div class="info">已选 <b>' + S.cart.courseIds.length + '</b> 门 · 小计 ' + GuoLe.money(selMoney) + '</div>' +
+        '<div class="btn-row"><a class="btn btn-primary" href="#/cart">去结算 →</a></div></div>';
     }
     return (
       '<h1 class="page-title">选课菜单</h1>' +
       '<p class="page-sub">' + GuoLe.esc(S.school ? S.school.name : '') + ' · ' + GuoLe.esc(S.identity.name || '未填写姓名') + '（' + GuoLe.esc(S.identity.sid || '未填写学号') + '） · 共 ' + S.courses.length + ' 门课</p>' +
       '<div class="card tip">' +
-      '<strong>计费规则：</strong>每学分基础价 ¥' + CFG.BASE_PRICE_PER_CREDIT + '；难度大/背诵量大的课程会酌情加价并注明原因。<br>' +
+      '<strong>计费规则：</strong>每门课 ¥' + CFG.COURSE_FEE + '；难度大/背诵量大的课程会酌情加价并注明原因。<br>' +
       (memberOn
-        ? '<span class="ok-text">✓ 会员已生效：每学分 95 折 + 买三送一</span>'
-        : '<a href="#/cart">还不是会员？结算时 49 元开通，享 95 折 + 买三送一 →</a>') +
+        ? '<span class="ok-text">✓ 会员已生效：95 折 + 买三送一</span>'
+        : '<a href="#/cart">还不是会员？结算时 ' + CFG.MEMBER_FEE + ' 元开通，享 95 折 + 买三送一 →</a>') +
       '<br><span class="muted">承诺：未达标全额退费并补偿重修费；可选“准分宝”锁定更高分数。</span>' +
       '</div>' +
       body
@@ -835,72 +668,120 @@
     });
   };
 
-  /* ================= 购物车 ================= */
+  /* ================= 购物车 + 收银台（合并为一页） ================= */
   routes['cart'].render = function () {
     const order = GuoLe.calcOrder(S);
     const scoreOptions = GuoLe.scoreBaoOptions();
-    let body;
     if (!S.cart.courseIds.length) {
-      body = '<div class="card empty"><div class="big">🛒</div><p>购物车还是空的。</p><a class="btn btn-primary" href="#/menu">去选课菜单逛逛 →</a></div>';
-    } else {
-      body =
-        '<div class="grid grid-2">' +
-        '<div><div class="card">' +
-        '<h3 style="margin-top:0">已选课程（' + S.cart.courseIds.length + ' 门）</h3>' +
-        S.cart.courseIds.map(function (id) {
-          const c = S.courses.find(function (x) { return x.id === id; });
-          if (!c) return '';
-          const pr = GuoLe.coursePricing(c);
-          return '<div class="cart-line"><span class="l-name">' + GuoLe.esc(c.name) + '</span>' +
-            '<span>' + fmtCredit(c.credit) + ' 学分 × ' + pr.unit + ' 元 <button class="btn btn-ghost" data-cart-del="' + c.id + '">✕</button></span></div>';
-        }).join('') +
-        '</div></div>' +
-        '<div>' +
-        '<div class="card">' +
-        '<h3 style="margin-top:0">订单明细</h3>' +
-        '<div class="cart-line"><span class="l-name">基础费用（' + order.credits + ' 学分）</span><span>' + GuoLe.money(order.rawTotal) + '</span></div>' +
-        (order.isMember
-          ? '<div class="cart-line"><span class="l-name">会员 95 折</span><span class="ok-text">− ' + GuoLe.money(order.memberDiscount) + '</span></div>' +
-            (order.freeCredits > 0
-              ? '<div class="cart-line"><span class="l-name">买三送一（免 ' + order.freeCredits + ' 学分）</span><span class="ok-text">− ' + GuoLe.money(order.buy3Value) + '</span></div>'
-              : '<div class="cart-line"><span class="l-name">买三送一</span><span class="muted">再选满 3 学分即可触发</span></div>')
-          : '') +
-        (order.memberFeeNeeded ? '<div class="cart-line"><span class="l-name">会员费（本次一并开通）</span><span>' + GuoLe.money(CFG.MEMBER_FEE) + '</span></div>' : '') +
-        (order.scorebao ? '<div class="cart-line"><span class="l-name">准分宝（目标 ≥ ' + order.scoreTarget + '）</span><span>' + GuoLe.money(order.scorebaoFee) + '</span></div>' : '') +
-        '<div class="total-line flex-between"><span>应付合计</span><span class="amount">' + GuoLe.money(order.total) + '</span></div>' +
-        '<p class="muted small">演示金额不会真实扣款。</p>' +
-        '</div>' +
-
-        '<div class="card">' +
-        '<h3 style="margin-top:0">🎓 会员</h3>' +
-        (S.membership.active
-          ? '<p><span class="tag tag-success">会员已生效</span> 本单自动享受 95 折 + 买三送一。</p>'
-          : '<label class="cart-line" style="cursor:pointer"><span class="l-name">本次一并开通会员（¥' + CFG.MEMBER_FEE + '）</span><input type="checkbox" id="member-box"' + (S.cart.wantsMember ? ' checked' : '') + '></label>' +
-            '<p class="muted small">开通后本单立即生效：每学分 95 折，且每满 3 学分免 1 学分。</p>') +
-        '</div>' +
-
-        '<div class="card">' +
-        '<h3 style="margin-top:0">🛡️ 准分宝（可选加购）</h3>' +
-        '<label class="cart-line" style="cursor:pointer"><span class="l-name">加购准分宝，保障分数高于所选范围</span><input type="checkbox" id="score-box"' + (S.cart.scorebao ? ' checked' : '') + '></label>' +
-        (S.cart.scorebao
-          ? '<div class="mt"><select id="score-target" style="width:100%;padding:8px;border:1px solid #e5e6eb;border-radius:8px">' +
-            scoreOptions.map(function (o) {
-              return '<option value="' + o.target + '"' + (S.cart.scoreTarget === o.target ? ' selected' : '') + '>目标 ≥ ' + o.target + ' 分（每学分 +¥' + o.feePerCredit + '）</option>';
-            }).join('') + '</select></div>'
-          : '') +
-        '</div>' +
-
-        '<a class="btn btn-primary btn-lg btn-block mt" href="#/checkout">去收银台结算 →</a>' +
-        '</div></div>';
+      return '<h1 class="page-title">结算</h1>' +
+        '<div class="card empty"><div class="big">🛒</div><p>还没有选课。</p>' +
+        '<a class="btn btn-primary" href="#/menu">去选课菜单逛逛 →</a></div>';
     }
+
+    const isWechat = payMethod === 'wechat';
+    const payTitle = isWechat ? '微信支付' : '支付宝';
+
     return (
-      '<h1 class="page-title">购物车</h1>' +
-      '<p class="page-sub">像点外卖一样勾选“补考护航”课程（可自由增减、随时退单）。</p>' +
-      body +
+      '<h1 class="page-title">结算</h1>' +
+      '<p class="page-sub">第 ' + (S.orderSeq + 1) + ' 笔订单 · 不会真实扣款</p>' +
+
+      /* ① 已选课程 */
+      '<div class="card">' +
+      '<h3 style="margin-top:0">已选课程（' + order.count + ' 门）</h3>' +
+      S.cart.courseIds.map(function (id) {
+        const c = S.courses.find(function (x) { return x.id === id; });
+        if (!c) return '';
+        const pr = GuoLe.coursePricing(c);
+        return '<div class="cart-line"><span class="l-name">' + GuoLe.esc(c.name) + '</span>' +
+          '<span>' + GuoLe.money(pr.subtotal) +
+          ' <button class="btn btn-ghost" data-cart-del="' + c.id + '">✕</button></span></div>';
+      }).join('') +
+      '<a class="btn btn-ghost small mt" href="#/menu">＋ 继续选课</a>' +
+      '</div>' +
+
+      /* ② 会员 / 准分宝：并排两小格，省空间 */
+      '<div class="opt-grid">' +
+      '<label class="opt-cell' + (S.membership.active || S.cart.wantsMember ? ' on' : '') + '">' +
+      '<span class="opt-ico">🎓</span>' +
+      '<span class="opt-name">' + (S.membership.active ? '会员已生效' : '开通会员') + '</span>' +
+      '<span class="opt-desc">' + (S.membership.active
+        ? '本单已享 95 折 + 买三送一'
+        : '¥' + CFG.MEMBER_FEE + ' / 学期<br>95 折 + 买三送一') + '</span>' +
+      (S.membership.active
+        ? '<span class="tag tag-success">已生效</span>'
+        : '<input type="checkbox" id="member-box"' + (S.cart.wantsMember ? ' checked' : '') + '>') +
+      '</label>' +
+
+      '<label class="opt-cell' + (S.cart.scorebao ? ' on' : '') + '">' +
+      '<span class="opt-ico">🛡️</span>' +
+      '<span class="opt-name">准分宝</span>' +
+      '<span class="opt-desc">' + (S.cart.scorebao
+        ? '目标 ≥ ' + S.cart.scoreTarget + ' 分'
+        : '加价锁定更高分数') + '</span>' +
+      '<input type="checkbox" id="score-box"' + (S.cart.scorebao ? ' checked' : '') + '>' +
+      '</label>' +
+      '</div>' +
+
+      (S.cart.scorebao
+        ? '<div class="card"><h3 style="margin-top:0">🛡️ 准分宝目标分数</h3>' +
+          '<select id="score-target" class="full-select">' +
+          scoreOptions.map(function (o) {
+            return '<option value="' + o.target + '"' + (S.cart.scoreTarget === o.target ? ' selected' : '') + '>目标 ≥ ' + o.target + ' 分（每门 +¥' + o.feePerCourse + '）</option>';
+          }).join('') + '</select></div>'
+        : '') +
+
+      /* ③ 订单明细 */
+      '<div class="card">' +
+      '<h3 style="margin-top:0">订单明细</h3>' +
+      '<div class="cart-line"><span class="l-name">课程费用（' + order.count + ' 门 × ¥' + CFG.COURSE_FEE + ' 起）</span><span>' + GuoLe.money(order.rawTotal) + '</span></div>' +
+      (order.isMember
+        ? '<div class="cart-line"><span class="l-name">会员 95 折</span><span class="ok-text">− ' + GuoLe.money(order.memberDiscount) + '</span></div>' +
+          (order.freeCount > 0
+            ? '<div class="cart-line"><span class="l-name">买三送一（免 ' + order.freeCount + ' 门）</span><span class="ok-text">− ' + GuoLe.money(order.buy3Value) + '</span></div>'
+            : '<div class="cart-line"><span class="l-name">买三送一</span><span class="muted">再选满 ' + (4 - order.count % 4) + ' 门即可免 1 门</span></div>')
+        : '') +
+      (order.memberFeeNeeded ? '<div class="cart-line"><span class="l-name">会员费（本次一并开通）</span><span>' + GuoLe.money(CFG.MEMBER_FEE) + '</span></div>' : '') +
+      (order.scorebao ? '<div class="cart-line"><span class="l-name">准分宝（目标 ≥ ' + order.scoreTarget + '）</span><span>' + GuoLe.money(order.scorebaoFee) + '</span></div>' : '') +
+      '<div class="total-line flex-between"><span>应付合计</span><span class="amount">' + GuoLe.money(order.total) + '</span></div>' +
+      (identityDone()
+        ? '<div class="tip small"><strong>已绑定身份：</strong>' + GuoLe.esc(S.identity.name) + ' · ' + GuoLe.esc(S.identity.sid) + '</div>'
+        : '<div class="tip warn small"><strong>尚未完成安全验证：</strong><a href="#/portal">去填写姓名与学号 →</a></div>') +
+      '</div>' +
+
+      /* ④ 付款方式 + 二维码 + 确认付款 */
+      '<div class="card">' +
+      '<h3 style="margin-top:0">扫码付款</h3>' +
+      '<div class="pay-tabs">' +
+      '<button class="pay-tab' + (isWechat ? ' active' : '') + '" data-pay="wechat">💚 微信支付</button>' +
+      '<button class="pay-tab' + (!isWechat ? ' active' : '') + '" data-pay="alipay">💙 支付宝</button>' +
+      '</div>' +
+      '<div class="qrcode-wrap">' +
+      '<canvas class="qrcode-canvas" id="pay-qr" width="180" height="180"></canvas>' +
+      '<p class="qrcode-hint">' + GuoLe.esc(payTitle) + ' · 演示金额 <strong>' + GuoLe.money(order.total) + '</strong><br>（示意二维码，不会真实跳转）</p>' +
+      '</div>' +
+      '<div class="tip warn" style="text-align:center">本页面不会真正扣款，请放心点击。</div>' +
+      '<button class="btn btn-success btn-lg btn-block" id="confirm-pay">✅ 确认付款 ' + GuoLe.money(order.total) + '</button>' +
+      '<p class="muted small" style="text-align:center">点击后会出现“整蛊彩蛋”，全程没有真实支付。</p>' +
+      '</div>' +
+
       '<div class="card tip mt"><strong>服务承诺：</strong>如果服务未达标，免费退还全部费用，并补偿相关学科重修费用。还可加价购买“准分宝”，保障分数大于你选定的范围。</div>'
     );
   };
   afterRender.cart = function () {
+    /* 二维码 */
+    const order = GuoLe.calcOrder(S);
+    const canvas = $('#pay-qr');
+    if (canvas) drawFakeQr(canvas, payMethod + '|' + order.total + '|' + Date.now());
+
+    /* 支付方式 */
+    $$('[data-pay]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        payMethod = b.getAttribute('data-pay');
+        render();
+      });
+    });
+
+    /* 移除课程 */
     $$('[data-cart-del]').forEach(function (b) {
       b.addEventListener('click', function () {
         S.cart.courseIds = S.cart.courseIds.filter(function (x) { return x !== b.getAttribute('data-cart-del'); });
@@ -908,6 +789,7 @@
         toast('已移出购物车');
       });
     });
+
     const memberBox = $('#member-box');
     if (memberBox) memberBox.addEventListener('change', function () {
       S.cart.wantsMember = memberBox.checked;
@@ -923,6 +805,13 @@
       S.cart.scoreTarget = parseInt(target.value, 10);
       GuoLe.save(); render();
     });
+
+    wireConfirmPay(order);
+  };
+
+  /* 两个入口共用（旧的 #/checkout 也走这里） */
+  afterRender.checkout = function () {
+    afterRender.cart();
   };
 
   /* ================= 模拟收银台 ================= */
@@ -965,60 +854,17 @@
 
   let payMethod = 'wechat';
 
+  /* 旧的收银台已与购物车合并，这里只做重定向（保留老链接可用） */
   routes['checkout'].render = function () {
-    const order = GuoLe.calcOrder(S);
-    if (!S.cart.courseIds.length) {
-      return '<div class="card empty"><div class="big">🧾</div><p>没有待结算的订单。</p><a class="btn btn-primary" href="#/menu">去选课 →</a></div>';
-    }
-    const isWechat = payMethod === 'wechat';
-    const payTitle = isWechat ? '微信支付' : '支付宝';
-    return (
-      '<h1 class="page-title">收银台</h1>' +
-      '<p class="page-sub">第 ' + (S.orderSeq + 1) + ' 笔订单 · 不会真实扣款</p>' +
-      '<div class="grid grid-2">' +
-      '<div class="card">' +
-      '<h3 style="margin-top:0">订单确认</h3>' +
-      '<p class="small">' + order.courses.map(function (c) { return GuoLe.esc(c.name) + '（' + fmtCredit(c.credit) + ' 学分）'; }).join('、') + '</p>' +
-      '<hr>' +
-      '<div class="cart-line"><span class="l-name">课程数 / 总学分</span><span>' + order.courses.length + ' 门 / ' + order.credits + ' 学分</span></div>' +
-      '<div class="cart-line"><span class="l-name">基础费用</span><span>' + GuoLe.money(order.rawTotal) + '</span></div>' +
-      (order.isMember ? '<div class="cart-line"><span class="l-name">会员优惠（95折+买三送一）</span><span class="ok-text">− ' + GuoLe.money(GuoLe.round2(order.memberDiscount + order.buy3Value)) + '</span></div>' : '') +
-      (order.memberFeeNeeded ? '<div class="cart-line"><span class="l-name">会员费</span><span>' + GuoLe.money(CFG.MEMBER_FEE) + '</span></div>' : '') +
-      (order.scorebao ? '<div class="cart-line"><span class="l-name">准分宝（≥' + order.scoreTarget + '）</span><span>' + GuoLe.money(order.scorebaoFee) + '</span></div>' : '') +
-      '<div class="total-line flex-between"><span>应付金额</span><span class="amount">' + GuoLe.money(order.total) + '</span></div>' +
-      (identityDone()
-        ? '<div class="tip"><strong>已绑定身份：</strong>' + GuoLe.esc(S.identity.name) + ' · ' + GuoLe.esc(S.identity.sid) + '<br><span class="muted">订单凭证将使用以上信息，可在“身份认证与课表导入”页修改。</span></div>'
-        : '<div class="tip warn"><strong>尚未完成安全验证：</strong>请先填写姓名与学号，订单凭证才能关联到你的身份。<br><a href="#/portal">→ 去完成安全验证</a></div>') +
-      '</div>' +
-
-      '<div class="card">' +
-      '<h3 style="margin-top:0">选择支付方式</h3>' +
-      '<div class="pay-tabs">' +
-      '<button class="pay-tab' + (isWechat ? ' active' : '') + '" data-pay="wechat">💚 微信支付</button>' +
-      '<button class="pay-tab' + (!isWechat ? ' active' : '') + '" data-pay="alipay">💙 支付宝</button>' +
-      '</div>' +
-      '<div class="qrcode-wrap">' +
-      '<canvas class="qrcode-canvas" id="pay-qr" width="180" height="180"></canvas>' +
-      '<p class="qrcode-hint">' + GuoLe.esc(payTitle) + ' · 请使用演示金额 ' + GuoLe.money(order.total) + ' 完成付款<br>（示意二维码，不会真实跳转）</p>' +
-      '</div>' +
-      '<div class="tip warn" style="text-align:center">本页面不会真正扣款，请放心点击。</div>' +
-      '<button class="btn btn-success btn-lg btn-block" id="confirm-pay">✅ 确认付款</button>' +
-      '<p class="muted small" style="text-align:center">点击后会出现“整蛊彩蛋”，全程没有真实支付。</p>' +
-      '</div>' +
-      '</div>'
-    );
+    return '<div class="card empty"><div class="big">🧾</div>' +
+      '<p>结算已合并到同一页。</p><a class="btn btn-primary" href="#/cart">前往结算 →</a></div>';
   };
-  afterRender.checkout = function () {
-    const order = GuoLe.calcOrder(S);
-    const canvas = $('#pay-qr');
-    if (canvas) drawFakeQr(canvas, payMethod + '|' + order.total + '|' + Date.now());
-    $$('[data-pay]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        payMethod = b.getAttribute('data-pay');
-        render();
-      });
-    });
-    $('#confirm-pay').addEventListener('click', function () {
+
+  /* ================= 确认付款 + 整蛊彩蛋 ================= */
+  function wireConfirmPay(order) {
+    const btn = $('#confirm-pay');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
       const wasMember = S.membership.active;
       if (S.cart.wantsMember && !wasMember) S.membership.active = true;
       S.orderSeq += 1;
@@ -1031,8 +877,7 @@
       openModal(
         '🚨 整蛊彩蛋',
         '<div class="prank-card">' +
-        '<h4 style="margin:0 0 8px">你已违反校规</h4>' +
-        '<p class="small">检测到您刚才通过闽江学院统一身份认证完成了登录。</p>' +
+        '<h4 class="prank-title">你已违反校规</h4>' +
         '<p><strong>姓名：</strong>' + GuoLe.esc(name) + '<br><strong>学号：</strong>' + GuoLe.esc(sid) + '</p>' +
         '<p>您刚刚在「过了么」确认了一笔 <strong>' + count + ' 门课程</strong>、合计 <strong>' + GuoLe.money(order.total) + '</strong> 的“补考护航”订单：' + GuoLe.esc(summary) + '。</p>' +
         '<p><strong>你已违反校规，请于 48 小时内主动前往教务处报到</strong>，并配合相关调查。教务处值班时间：工作日 8:00–17:00。</p>' +
@@ -1055,7 +900,9 @@
         render();
       });
     });
-  };
+  }
+
+  /* ---------- 已废弃：旧收银台模板（保留函数名以免影响阅读顺序） ---------- */
 
   function clearCartFields() {
     S.cart.courseIds = [];
@@ -1163,6 +1010,16 @@
   };
 
   /* ---------- 启动 ---------- */
+  /* 供其它模块（导入页等）复用路由器与提示 */
+  window.GuoLeUI = {
+    go: go,
+    toast: toast,
+    openModal: openModal,
+    closeModal: closeModal,
+    render: render,
+    state: S
+  };
+
   /* 书签小工具跳回来时带的数据：#/portal?import=<encodeURIComponent(text)> */
   function consumeImportPayload() {
     const m = location.hash.match(/[?&]import=([^&]+)/);
@@ -1174,17 +1031,26 @@
     return text;
   }
 
+  /* 书签小工具跳回来时把文本交给【导入页】处理，复用同一套核对界面 */
   function applyIncomingImport(text) {
     setTimeout(function () {
-      const rep = ingestText(text, { source: '书签提取' });
-      const box = $('#oneshot-result');
-      if (box) {
-        box.innerHTML = '<div class="tip success">📎 已通过书签小工具完成提取：</div>' + ingestReportHtml(rep);
-        wireOneshotGo();
+      if (currentPath() !== 'import') {
+        try { history.replaceState(null, '', location.pathname + '#/import'); }
+        catch (e) { location.hash = '#/import'; }
+        render();
       }
-      if (rep && rep.added.length) toast('✅ 书签提取成功：' + rep.added.length + ' 门课程', 'ok');
-      const card = $('#oneshot-card');
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(function () {
+        if (window.GuoLeImportUI) {
+          window.GuoLeImportUI.handleSharedText(text);
+          toast('📎 已通过书签小工具提取，请核对课程', 'ok');
+        } else {
+          // 导入模块不可用时退化为直接合并（少见）
+          const rep = ingestText(text, { source: '书签提取' });
+          if (rep && rep.added && rep.added.length) {
+            toast('✅ 书签提取成功：' + rep.added.length + ' 门课程', 'ok');
+          }
+        }
+      }, 80);
     }, 60);
   }
 
@@ -1196,4 +1062,76 @@
   const incomingImport = consumeImportPayload();
   render();
   if (incomingImport) applyIncomingImport(incomingImport);
+
+  /* ================= PWA：分享目标 / 文件打开 / 离线 =================
+     这一块是「手机傻瓜式导入」的关键：
+       - 用户在「文件管理」里长按导出的 PDF → 分享 → 选「过了么」
+         → 页面收到 ?share= 参数（或 File Handling 的文件句柄）→ 直接开始解析。
+       - 用户不需要在文件选择器里再翻一遍文件。
+     ================================================================ */
+
+  /* 从 URL 取出分享进来的文字（PWA share_target 用 GET 传参） */
+  function consumeSharePayload() {
+    var q = location.search || '';
+    if (!q) return null;
+    var params = new URLSearchParams(q);
+    var parts = [params.get('text'), params.get('title'), params.get('url')]
+      .filter(function (x) { return x && x.trim(); });
+    if (!parts.length) return null;
+    // 解析完就把参数清掉，避免刷新时重复导入
+    try { history.replaceState(null, '', location.pathname + '#/import'); }
+    catch (e) { location.hash = '#/import'; }
+    return parts.join('\n');
+  }
+
+  function bootImportUI() {
+    return window.GuoLeImportUI && window.GuoLeImportUI;
+  }
+
+  /* 分享文字进来。
+     两个坑：
+       1) history.replaceState 改 hash 【不会】触发 hashchange，必须自己 render()；
+       2) 不能只在「路径不是 import」时才 render —— 首屏渲染可能发生在
+          hash 还是空的时候，此时路径恰好已经是 import，却被跳过。
+     所以这里【无条件】确保一次渲染，再交给导入页处理文字。 */
+  var sharedText = consumeSharePayload();
+  if (sharedText) {
+    try { history.replaceState(null, '', location.pathname + '#/import'); }
+    catch (e) { location.hash = '#/import'; }
+    render();
+    setTimeout(function () {
+      var ui = bootImportUI();
+      if (ui) ui.handleSharedText(sharedText);
+    }, 80);
+  }
+
+  /* 用「过了么」打开文件（File Handling API，安卓 Chrome/Edge 支持） */
+  if ('launchQueue' in window && typeof window.launchQueue.setConsumer === 'function') {
+    window.launchQueue.setConsumer(function (params) {
+      if (!params || !params.files || !params.files.length) return;
+      var handles = params.files;
+      Promise.all(handles.map(function (h) {
+        return h.getFile ? h.getFile() : Promise.resolve(null);
+      })).then(function (files) {
+        files = files.filter(Boolean);
+        if (!files.length) return;
+        try { history.replaceState(null, '', location.pathname + '#/import'); }
+        catch (e) { location.hash = '#/import'; }
+        render();                        // 同上：replaceState 不触发 hashchange
+        setTimeout(function () {
+          var ui = bootImportUI();
+          if (ui) ui.handleFiles(files);
+        }, 100);
+      }).catch(function () { /* 用户取消或权限问题，忽略 */ });
+    });
+  }
+
+  /* 注册 Service Worker（PWA 可安装的前提） */
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {
+        /* 本地 file:// 或子路径问题时静默降级，不影响主流程 */
+      });
+    });
+  }
 })();

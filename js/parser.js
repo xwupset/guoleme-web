@@ -118,16 +118,64 @@
       }
     }
 
-    const parts = cleanLine.split(/\t|\s{2,}/);
+    // 按任意空白切分：教务表格导出后常常只剩单个空格（尤其 PDF 抽取出来的文本）
+    const parts = cleanLine.split(/\t|\s+/);
     const cells = [];
     parts.forEach(function (p) { const t = p.trim(); if (t) cells.push(t); });
     if (!cells.length) return null;
-    let creditIdx = -1;
-    for (let i = cells.length - 1; i >= 0; i--) {
-      if (looksLikeCreditToken(cells[i])) { creditIdx = i; break; }
+
+    /* 找「像学分」的格子。
+       教务导出的表格里同一行常出现「形势与政策 7 0.25 思政类 考试 必修 …」，
+       如果简单地从右往左取第一个 0.1~20 的数，会取到「7」而不是真正的学分 0.25。
+       策略：
+         1) 「N 学分」这种明确标注，优先级最高；
+         2) 带小数点的（学分绝大多数是 0.25/2.5/3.5）；
+         3) 都没有才退化为最后一个 0.1~20 的整数。 */
+    const marked = [];
+    const plain = [];
+    for (let i = 0; i < cells.length; i++) {
+      const m = cells[i].match(/^(\d+(?:\.\d+)?)\s*学分$/);
+      if (m) { marked.push({ i: i, v: parseFloat(m[1]), len: 1 }); continue; }
+      if (looksLikeCreditToken(cells[i])) plain.push({ i: i, v: parseFloat(cells[i]), dec: /\./.test(cells[i]) });
+      // 「5 学分」被空格拆成两个格子时的情形
+      if (i + 1 < cells.length && cells[i + 1] === '学分' && looksLikeCreditToken(cells[i])) {
+        marked.push({ i: i, v: parseFloat(cells[i]), len: 2 });
+      }
     }
-    if (creditIdx < 0) return null;
-    const credit = parseFloat(cells[creditIdx]);
+
+    const STOP = /^(学分|考试|考查|必修|选修|限选|任选|公选|专业课|公共课|理论|实践|讲课|实训|实验|\d+)$/;
+    const isMeta = function (t) {
+      return STOP.test(t) || /^[（(][^）)]*[）)]$/.test(t);
+    };
+
+    if (marked.length) {
+      const mk = marked[0];
+      // 学分在前：课程名 = 学分之后、遇到「（类别）/必修/考试」之前的所有格子拼起来
+      const tail = cells.slice(mk.i + mk.len);
+      const buf = [];
+      for (let j = 0; j < tail.length; j++) {
+        if (isMeta(tail[j])) break;
+        buf.push(tail[j]);
+      }
+      let nm = buf.join('').replace(/\s+/g, '');
+      if (nm.length >= 2 && isCourseNameCandidate(nm)) return { name: nm, credit: mk.v };
+
+      // 学分在后：课程名 = 学分之前的所有格子
+      const head = cells.slice(0, mk.i).filter(function (t) { return !isMeta(t); });
+      nm = head.join(' ').trim();
+      const pickedName = bestNameCandidate(nm);
+      if (pickedName) return { name: pickedName, credit: mk.v };
+      return null;
+    }
+
+    const cands = plain;
+    if (!cands.length) return null;
+    const decs = cands.filter(function (c) { return c.dec; });
+    const picked = decs.length ? decs[decs.length - 1] : cands[cands.length - 1];
+    const creditIdx = picked.i;
+    const credit = picked.v;
+
+    // 学分前面那些格子拼起来就是课程名（末尾的类别/考核列表头会被 bestNameCandidate 剔掉）
     const nameRaw = cells.slice(0, creditIdx).join(' ');
     const name = bestNameCandidate(nameRaw);
     if (!name) return null;
@@ -238,7 +286,24 @@
   function parseIdentity(text) {
     const t = normalizeText(text);
     let sid = (t.match(/(?:学\s*号)\s*[:：]?\s*(\d{6,20})/) || [])[1] || '';
-    let name = (t.match(/(?:姓\s*名)\s*[:：]?\s*([\u4e00-\u9fa5·]{2,6})/) || [])[1] || '';
+    // 姓名优先用「非贪婪 + 遇到下一个标签就停」的方式，避免把「学号」粘进姓名
+    let name = '';
+    let nm = t.match(/(?:姓\s*名)\s*[:：]?\s*([\u4e00-\u9fa5·]{2,4}?)(?=\s|学\s*号|班\s*级|专\s*业|学\s*院|$|[\d:：,，。;；])/);
+    if (nm) name = nm[1];
+    if (!name) {
+      nm = t.match(/(?:姓\s*名)\s*[:：]?\s*([\u4e00-\u9fa5·]{2,4})/);
+      if (nm) name = nm[1];
+    }
+    // 课表 PDF 的常见形态：标题「黄宇翔课表」，正文里另有「学号：…」
+    if (!name) {
+      nm = t.match(/([\u4e00-\u9fa5·]{2,4})\s*课\s*表/);
+      if (nm) name = nm[1];
+    }
+    if (!name) {
+      // 「学号：3231703114」前面的那一段若是纯中文人名的长度，也认下来
+      nm = t.match(/([\u4e00-\u9fa5·]{2,4})\s*(?=[\s\S]{0,40}学\s*号)/);
+      if (nm && !/学院|专业|班级|课程|学生|学期|学年|时间/.test(nm[1])) name = nm[1];
+    }
     if (!sid || !name) {
       const lines = t.split('\n').map(function (x) { return x.trim(); });
       for (let i = 0; i < lines.length; i++) {
@@ -260,34 +325,6 @@
     return { name: name, sid: sid };
   }
 
-  /* 生成“书签小工具”源码：在教务系统页面上点一下，
-     自动找到“课程名称 + 学分”表格 → 拼成文本 → 跳回本程序 #/portal?import=... */
-  function buildBookmarklet(appUrl) {
-    var A = JSON.stringify(String(appUrl || ''));
-    return [
-      '(function(){var A=', A, ';try{',
-      "var ts=document.querySelectorAll('table'),b=null,bn=0,i;",
-      "for(i=0;i<ts.length;i++){var x=ts[i].innerText||'';if(x.indexOf('课程名称')>=0&&x.indexOf('学分')>=0&&ts[i].rows.length>bn){bn=ts[i].rows.length;b=ts[i];}}",
-      "if(!b){alert('过了么：本页没有找到“课程名称 + 学分”表格。\\n\\n请依次点击：信息查询 → 查询个人信息 → 选课信息，把学年/学期切到本学期后，再点一次书签。');return;}",
-      "var h=b.rows[0],ci=2,si=5,k;",
-      "for(k=0;k<h.cells.length;k++){var t=(h.cells[k].innerText||'').replace(/\\s/g,'');if(t.indexOf('课程名称')>=0)ci=k;if(t.indexOf('学分')>=0)si=k;}",
-      "var out=[],seen={},r;",
-      "for(r=1;r<b.rows.length;r++){var cs=b.rows[r].cells;if(!cs||cs.length<=ci||cs.length<=si)continue;",
-      "var nm=(cs[ci].innerText||'').replace(/\\s+/g,' ').trim();var cr=(cs[si].innerText||'').replace(/[^0-9.]/g,'');",
-      "if(nm.length<2||!cr)continue;var key=nm+'|'+cr;if(seen[key])continue;seen[key]=1;out.push(nm+' | '+cr);}",
-      "if(!out.length){alert('过了么：表格里没有读到有效的课程行，请确认已切到“选课信息”并选好学年/学期。');return;}",
-      "var tx=document.body.innerText||'';",
-      "var sid=(tx.match(/学\\s*号\\s*[:：]?\\s*([0-9]{6,20})/)||[])[1]||'';",
-      "var nm2=(tx.match(/姓\\s*名\\s*[:：]?\\s*([\\u4e00-\\u9fa5·]{2,6})/)||[])[1]||'';",
-      "var pay=[];if(sid)pay.push('学号：'+sid);if(nm2)pay.push('姓名：'+nm2);",
-      "pay=pay.concat(out);",
-      "var u=A+'#/portal?import='+encodeURIComponent(pay.join('\\n'));",
-      "if(u.length>80000){alert('过了么：课程数据太长，请分批复制。');return;}",
-      "location.href=u;",
-      "}catch(e){alert('过了么提取失败：'+e.message);}})();"
-    ].join('');
-  }
-
   function parseCourseText(text) {
     const normalized = normalizeText(text);
     const rawLines = normalized.replace(/\r/g, '').split('\n');
@@ -295,9 +332,19 @@
     // 清洗：去空行 / 纯符号行（markdown 表格分隔线）
     const lines = [];
     rawLines.forEach(function (l) {
-      const t = l.trim();
+      let t = l.trim();
       if (!t) return;
       if (/^[-:：|｜\s]+$/.test(t)) return;
+      /* CSV / 导出的表格常用逗号或分号分隔。
+         如果这一行逗号够多、且看不太像正常的课程描述，就把分隔符换成 tab，
+         让后面的分列逻辑能正确切分。 */
+      const commas = (t.match(/[,，]/g) || []).length;
+      const semis = (t.match(/[;；]/g) || []).length;
+      if (commas >= 2 && !/[（(]\s*\d/.test(t)) {
+        t = t.replace(/[,，]/g, '\t');
+      } else if (semis >= 2) {
+        t = t.replace(/[;；]/g, '\t');
+      }
       lines.push(t);
     });
 
@@ -335,7 +382,6 @@
 
   window.GuoLeParser = {
     parseCourseText: parseCourseText,
-    buildBookmarklet: buildBookmarklet,
     parseIdentity: parseIdentity,
     parseRowsFormat: parseRowsFormat,
     parseInlineLine: parseInlineLine,

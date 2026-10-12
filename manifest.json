@@ -1,0 +1,49 @@
+{
+  "name": "过了么 · 课程表导入",
+  "short_name": "过了么",
+  "description": "把教务系统导出的课表 / 选课信息文件，一键变成课程清单。课程作业虚构演示项目。",
+  "lang": "zh-CN",
+  "start_url": "./index.html#/import",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fa",
+  "theme_color": "#1677ff",
+  "icons": [
+    {
+      "src": "img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "./index.html",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "./index.html",
+      "accept": {
+        "application/pdf": [".pdf"],
+        "application/vnd.ms-excel": [".xls"],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+        "text/csv": [".csv"],
+        "application/json": [".json"],
+        "text/plain": [".txt"]
+      }
+    }
+  ]
+}

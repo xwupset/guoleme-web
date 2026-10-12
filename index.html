@@ -2,9 +2,17 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#1677ff">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="过了么">
   <title>过了么 · 课程作业演示版</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="img/favicon.png">
+  <link rel="apple-touch-icon" href="img/icon-192.png">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -20,6 +28,7 @@
       </a>
       <nav class="main-nav">
         <a href="#/" data-nav="/">首页</a>
+        <a href="#/import" data-nav="/import">导入课表</a>
         <a href="#/menu" data-nav="/menu">选课菜单</a>
         <a href="#/cart" data-nav="/cart">购物车 <b id="nav-cart-count" class="nav-badge" style="display:none">0</b></a>
         <a href="#/recruit" data-nav="/recruit">墨客招募</a>
@@ -42,8 +51,15 @@
     </div>
   </footer>
 
+  <!-- lib/fflate.min.js：同步解压（PDF 的 Flate 流），本地内置避免依赖 CDN -->
+  <script src="lib/fflate.min.js"></script>
+  <!-- 状态、解析与导入引擎：普通脚本，按依赖顺序加载 -->
   <script src="js/store.js"></script>
   <script src="js/parser.js"></script>
+  <script src="js/pdftext.js"></script>
+  <script src="js/timetable.js"></script>
+  <script src="js/importfile.js"></script>
+  <script src="js/importui.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

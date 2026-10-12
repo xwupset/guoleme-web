@@ -6,15 +6,15 @@
 
   const CONFIG = {
     APP_NAME: '过了么',
-    BASE_PRICE_PER_CREDIT: 99,     // 每学分基础收费 99 元
+    COURSE_FEE: 49.99,             // 每门课固定 49.99 元
     MEMBER_FEE: 49,                // 会员费 49 元/学期
     MEMBER_DISCOUNT: 0.05,         // 会员 95 折
-    BUY3_SEND1: true,              // 买三送一（每满 4 学分免 1 学分）
+    BUY3_SEND1: true,              // 买三送一（每选满 4 门免 1 门）
     SCORE_BAO: [
-      { target: 80, feePerCredit: 39, label: '≥ 80 分' },
-      { target: 85, feePerCredit: 69, label: '≥ 85 分' },
-      { target: 90, feePerCredit: 109, label: '≥ 90 分' },
-      { target: 95, feePerCredit: 169, label: '≥ 95 分' }
+      { target: 80, feePerCourse: 39, label: '≥ 80 分' },
+      { target: 85, feePerCourse: 69, label: '≥ 85 分' },
+      { target: 90, feePerCourse: 109, label: '≥ 90 分' },
+      { target: 95, feePerCourse: 169, label: '≥ 95 分' }
     ],
     SCHOOL: {
       id: 'mju',
@@ -73,13 +73,13 @@
 
   function demoCourses() {
     return [
-      { id: 'demo-1', name: '高等数学A（上）', credit: 5, category: '公共基础', source: '演示课表' },
-      { id: 'demo-2', name: '大学物理B', credit: 3.5, category: '公共基础', source: '演示课表' },
-      { id: 'demo-3', name: '大学英语（三）', credit: 3, category: '公共基础', source: '演示课表' },
-      { id: 'demo-4', name: '马克思主义基本原理', credit: 3, category: '思政类', source: '演示课表' },
-      { id: 'demo-5', name: 'C语言程序设计', credit: 2.5, category: '专业基础', source: '演示课表' },
-      { id: 'demo-6', name: '概率论与数理统计', credit: 3, category: '公共基础', source: '演示课表' },
-      { id: 'demo-7', name: '体育（三）', credit: 1, category: '公共基础', source: '演示课表' }
+      { id: 'demo-1', name: '高等数学A（上）', category: '公共基础', source: '演示课表' },
+      { id: 'demo-2', name: '大学物理B', category: '公共基础', source: '演示课表' },
+      { id: 'demo-3', name: '大学英语（三）', category: '公共基础', source: '演示课表' },
+      { id: 'demo-4', name: '马克思主义基本原理', category: '思政类', source: '演示课表' },
+      { id: 'demo-5', name: 'C语言程序设计', category: '专业基础', source: '演示课表' },
+      { id: 'demo-6', name: '概率论与数理统计', category: '公共基础', source: '演示课表' },
+      { id: 'demo-7', name: '体育（三）', category: '公共基础', source: '演示课表' }
     ];
   }
 
@@ -103,12 +103,11 @@
 
   function coursePricing(course) {
     const diff = courseDifficulty(course);
-    const unit = CONFIG.BASE_PRICE_PER_CREDIT * (1 + diff.rate);
-    const subtotal = unit * course.credit;
+    const subtotal = CONFIG.COURSE_FEE * (1 + diff.rate);
     return {
-      base: CONFIG.BASE_PRICE_PER_CREDIT,
+      base: CONFIG.COURSE_FEE,
       diff: diff,
-      unit: Math.round(unit * 100) / 100,
+      unit: Math.round(subtotal * 100) / 100,
       subtotal: Math.round(subtotal * 100) / 100
     };
   }
@@ -127,33 +126,27 @@
 
   function getScoreBaoFee(state) {
     const opt = CONFIG.SCORE_BAO.find((o) => o.target === state.cart.scoreTarget) || CONFIG.SCORE_BAO[0];
-    const credits = totalCredits(state);
-    return round2(opt.feePerCredit * credits);
+    const count = state.cart.courseIds.length;
+    return round2(opt.feePerCourse * count);
   }
 
-  function totalCredits(state) {
-    return round2(state.cart.courseIds.reduce((sum, id) => {
-      const c = state.courses.find((x) => x.id === id);
-      return c ? sum + c.credit : sum;
-    }, 0));
-  }
-
-  /* 结算计算：返回明细 */
+  /* 结算计算：返回明细（按「门数」计价，不再按学分） */
   function calcOrder(state) {
     const selected = state.cart.courseIds
       .map((id) => state.courses.find((c) => c.id === id))
       .filter(Boolean);
-    const credits = round2(selected.reduce((s, c) => s + c.credit, 0));
+    const count = selected.length;
     const rawTotal = round2(selected.reduce((s, c) => s + coursePricing(c).subtotal, 0));
     let memberDiscount = 0;
     let buy3Value = 0;
-    let freeCredits = 0;
+    let freeCount = 0;
     const isMember = state.membership.active === true || state.cart.wantsMember === true;
     if (isMember) {
       memberDiscount = round2(rawTotal * CONFIG.MEMBER_DISCOUNT);
-      if (CONFIG.BUY3_SEND1 && credits > 0) {
-        freeCredits = Math.floor(credits / 4);
-        buy3Value = round2(rawTotal * freeCredits / credits);
+      if (CONFIG.BUY3_SEND1 && count > 0) {
+        // 买三送一：每选满 4 门免 1 门
+        freeCount = Math.floor(count / 4);
+        buy3Value = round2(rawTotal * freeCount / count);
       }
     }
     const memberFeeNeeded = state.cart.wantsMember && !state.membership.active ? CONFIG.MEMBER_FEE : 0;
@@ -161,11 +154,11 @@
     const total = round2(Math.max(0, rawTotal - memberDiscount - buy3Value) + memberFeeNeeded + scorebaoFee);
     return {
       courses: selected,
-      credits: credits,
+      count: count,
       rawTotal: rawTotal,
       isMember: isMember,
       memberDiscount: memberDiscount,
-      freeCredits: freeCredits,
+      freeCount: freeCount,
       buy3Value: buy3Value,
       memberFeeNeeded: memberFeeNeeded,
       wantsMember: state.cart.wantsMember,
@@ -199,7 +192,6 @@
     newCourseId: newCourseId,
     coursePricing: coursePricing,
     calcOrder: calcOrder,
-    totalCredits: totalCredits,
     scoreBaoOptions: scoreBaoOptions,
     cartCount: cartCount,
     round2: round2,
