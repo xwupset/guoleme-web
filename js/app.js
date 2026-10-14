@@ -175,7 +175,7 @@
     return (
       '<section class="hero">' +
       '<span class="kicker">课程作业 · 校园内测体验版</span>' +
-      '<h1>期末考试，稳了？<br>过了么，一单到手 🎯</h1>' +
+      '<h1>期末考试！稳了！<br>过了么，一单到手 🎯</h1>' +
       '<p>选学校、认证、导入本学期课表、像点外卖一样下单——「过了么」把“期末护航”做成了一份随手可点的菜单。这是一个界面完整、剧情整蛊的课程作业项目。</p>' +
       '<div class="btn-row"><a class="btn hero-cta" href="#/school">🚀 开始体验</a></div>' +
       '</section>' +
