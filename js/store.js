@@ -22,6 +22,9 @@
       alias: ['闽江学院', '闽江大学', '闽江', '闽', '江'],
       portalUrl: 'https://i.mju.edu.cn/',
       portalName: '闽江学院统一身份认证平台',
+      /* 统一身份认证登录页：带上 service 参数，登录成功后直接落到教务系统 */
+      authUrl: 'https://authserver.mju.edu.cn/authserver/login?service=http://jwgl.mju.edu.cn/jwglxt/xtgl/login_slogin.html',
+      authName: '统一身份认证',
       jwUrl: 'http://jwgl.mju.edu.cn/jwglxt/xtgl/login_slogin.html',
       jwOuterUrl: 'http://183.250.189.53/jwglxt/xtgl/login_slogin.html',
       jwName: '闽江学院教务管理系统（强智 V9.0）',

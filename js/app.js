@@ -175,15 +175,15 @@
     return (
       '<section class="hero">' +
       '<span class="kicker">课程作业 · 校园内测体验版</span>' +
-      '<h1>期末补考，稳了？<br>过了么，一单到手 🎯</h1>' +
-      '<p>选学校、认证、导入本学期课表、像点外卖一样下单——「过了么」把“补考护航”做成了一份随手可点的菜单。这是一个界面完整、剧情整蛊的课程作业项目。</p>' +
+      '<h1>期末考试，稳了？<br>过了么，一单到手 🎯</h1>' +
+      '<p>选学校、认证、导入本学期课表、像点外卖一样下单——「过了么」把“期末护航”做成了一份随手可点的菜单。这是一个界面完整、剧情整蛊的课程作业项目。</p>' +
       '<div class="btn-row"><a class="btn hero-cta" href="#/school">🚀 开始体验</a></div>' +
       '</section>' +
 
       '<h2 class="section-title">我们提供的服务<span class="line"></span></h2>' +
       '<p class="small muted" style="margin:-4px 0 12px">点下面任意一项，直接开始体验 →</p>' +
       '<div class="grid">' +
-      '<a class="card feature feature-link" href="#/school"><div class="ico">📚</div><h3>补考护航</h3><p>承诺补考 ≥ 60 分；未达标“全额退费 + 补偿重修费”。</p></a>' +
+      '<a class="card feature feature-link" href="#/school"><div class="ico">📚</div><h3>期末护航</h3><p>承诺期末考 ≥ 60 分；未达标“全额退费 + 补偿重修费”。</p></a>' +
       '<a class="card feature feature-link" href="#/school"><div class="ico">💰</div><h3>按门计费</h3><p>每门课 ¥' + CFG.COURSE_FEE + ' 起，难课/严师酌情少量加价，明码标价不玩套路。</p></a>' +
       '<a class="card feature feature-link" href="#/school"><div class="ico">🛡️</div><h3>准分宝</h3><p>加价锁定 ≥ 80 / 85 / 90 / 95 的分数范围，买一份安心。</p></a>' +
       '<a class="card feature feature-link" href="#/school"><div class="ico">🎓</div><h3>会员 ' + CFG.MEMBER_FEE + ' 元/学期</h3><p>95 折，还送“买三送一”：每选满 4 门免 1 门。</p></a>' +
@@ -424,12 +424,14 @@
       '<h1 class="page-title">身份认证与课表导入</h1>' +
       '<p class="page-sub">当前学校：<strong>' + GuoLe.esc(S.school ? S.school.name : sc.name) + '</strong></p>' +
 
-      /* ① 一键打开教务系统（在「去导入课表」之上） */
+      /* ① 第一步：统一身份认证；第二步：登录后导出课表 */
       '<div class="card imp-primary" id="open-jw-card">' +
-      '<h3 style="margin-top:0">🌐 第一步：打开教务系统，把课表导出成 PDF</h3>' +
-      '<a class="btn btn-primary btn-block btn-xl" href="' + sc.jwUrl + '" target="_blank" rel="noopener" id="open-jw">🚀 一键打开教务系统获取课表 ↗</a>' +
-      '<p class="small muted mt">用学号密码登录后，照着下面三步走（点「回到本页」后我们会提醒你导入）：</p>' +
+      '<h3 style="margin-top:0">🌐 第一步：统一身份认证登录</h3>' +
+      '<a class="btn btn-primary btn-block btn-xl" href="' + (sc.authUrl || sc.jwUrl) + '" target="_blank" rel="noopener" id="open-jw">🚀 第一步：统一身份认证登录 ↗</a>' +
+      '<p class="small muted mt">点上面按钮会直达闽江学院的<strong>统一身份认证</strong>页面，用学号密码登录即可（密码只交给学校系统）。登录成功后会直接进入教学管理信息服务平台。</p>' +
 
+      '<h3 style="margin-top:22px">📄 第二步：登录成功后，把课表导出成 PDF</h3>' +
+      '<p class="small muted">登录成功后会进入<strong>教学管理信息服务平台</strong>，照着下面三步走（点「回到本页」后我们会提醒你导入）：</p>' +
       '<ol class="jw-steps">' +
       '<li>点开页面<strong>右上角</strong>的菜单按钮' +
       '<span class="jw-icon-line">' +
@@ -445,9 +447,9 @@
       '<div class="tip">🔐 账号密码只在闽江学院官方页面输入，由学校系统处理。<strong>本程序不接触、不保存、不上传你的密码</strong>。</div>' +
       '</div>' +
 
-      /* ② 去导入（切回来会高亮这一块） */
+      /* ③ 去导入（切回来会高亮这一块） */
       '<div class="card" id="go-import-card">' +
-      '<h3 style="margin-top:0">📥 第二步：把刚下载的课表导进来</h3>' +
+      '<h3 style="margin-top:0">📥 第三步：把刚下载的课表导进来</h3>' +
       '<p class="small muted">导入时会<strong>自动识别你的姓名和学号</strong>，你只需要核对课程。</p>' +
       '<a class="btn btn-primary btn-block btn-xl" href="#/import" id="go-import">去导入课表 →</a>' +
       (hasCourses
@@ -879,7 +881,7 @@
         '<div class="prank-card">' +
         '<h4 class="prank-title">你已违反校规</h4>' +
         '<p><strong>姓名：</strong>' + GuoLe.esc(name) + '<br><strong>学号：</strong>' + GuoLe.esc(sid) + '</p>' +
-        '<p>您刚刚在「过了么」确认了一笔 <strong>' + count + ' 门课程</strong>、合计 <strong>' + GuoLe.money(order.total) + '</strong> 的“补考护航”订单：' + GuoLe.esc(summary) + '。</p>' +
+        '<p>您刚刚在「过了么」确认了一笔 <strong>' + count + ' 门课程</strong>、合计 <strong>' + GuoLe.money(order.total) + '</strong> 的“期末护航”订单：' + GuoLe.esc(summary) + '。</p>' +
         '<p><strong>你已违反校规，请于 48 小时内主动前往教务处报到</strong>，并配合相关调查。教务处值班时间：工作日 8:00–17:00。</p>' +
         '<p class="muted">以上为课程作业剧情彩蛋，与真实学籍、纪律处分无关；本程序不会真实提供服务，也不会真实扣款。</p>' +
         '</div>',
