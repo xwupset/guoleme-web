@@ -427,7 +427,7 @@
       /* 第一步：先把攻略讲清楚，再放按钮 ——
          否则用户点完按钮就跳走了，后面几步永远看不到。 */
       '<div class="card imp-primary" id="open-jw-card">' +
-      '<h3 style="margin-top:0">🌐 第一步：登录教务系统</h3>' +
+      '<h3 style="margin-top:0">🌐 第一步：登录教务系统，下载课表 PDF</h3>' +
       '<p class="small muted">先花 10 秒看完下面<strong>三步</strong>再点按钮，免得登录进去以后找不到路。</p>' +
       '<ol class="jw-steps">' +
       '<li>点开页面<strong>右上角</strong>的菜单按钮' +
