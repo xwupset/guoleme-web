@@ -424,14 +424,11 @@
       '<h1 class="page-title">身份认证与课表导入</h1>' +
       '<p class="page-sub">当前学校：<strong>' + GuoLe.esc(S.school ? S.school.name : sc.name) + '</strong></p>' +
 
-      /* ① 第一步：统一身份认证；第二步：登录后导出课表 */
+      /* 第一步：先把攻略讲清楚，再放按钮 ——
+         否则用户点完按钮就跳走了，后面几步永远看不到。 */
       '<div class="card imp-primary" id="open-jw-card">' +
-      '<h3 style="margin-top:0">🌐 第一步：统一身份认证登录</h3>' +
-      '<a class="btn btn-primary btn-block btn-xl" href="' + (sc.authUrl || sc.jwUrl) + '" target="_blank" rel="noopener" id="open-jw">🚀 第一步：统一身份认证登录 ↗</a>' +
-      '<p class="small muted mt">点上面按钮会直达闽江学院的<strong>统一身份认证</strong>页面，用学号密码登录即可（密码只交给学校系统）。登录成功后会直接进入教学管理信息服务平台。</p>' +
-
-      '<h3 style="margin-top:22px">📄 第二步：登录成功后，把课表导出成 PDF</h3>' +
-      '<p class="small muted">登录成功后会进入<strong>教学管理信息服务平台</strong>，照着下面三步走（点「回到本页」后我们会提醒你导入）：</p>' +
+      '<h3 style="margin-top:0">🌐 第一步：登录教务系统</h3>' +
+      '<p class="small muted">先花 10 秒看完下面<strong>三步</strong>再点按钮，免得登录进去以后找不到路。</p>' +
       '<ol class="jw-steps">' +
       '<li>点开页面<strong>右上角</strong>的菜单按钮' +
       '<span class="jw-icon-line">' +
@@ -441,15 +438,18 @@
       '<span class="jw-icon-note">← 就是这个</span>' +
       '</span></li>' +
       '<li>依次点击 <strong>信息查询</strong> → <strong>个人课表查询</strong></li>' +
-      '<li>页面上会有一个<strong>输出 PDF</strong> 的按钮，点它把课表存到手机里</li>' +
+      '<li>点页面上的<strong>输出 PDF</strong> 按钮，把课表存到手机里</li>' +
       '</ol>' +
-
-      '<div class="tip">🔐 账号密码只在闽江学院官方页面输入，由学校系统处理。<strong>本程序不接触、不保存、不上传你的密码</strong>。</div>' +
+      '<div class="jw-return">看完上面三步，再点这里去登录：</div>' +
+      '<a class="btn btn-primary btn-block btn-xl" href="' + (sc.authUrl || sc.jwUrl) + '" target="_blank" rel="noopener" id="open-jw">🚀 统一身份认证登录 ↗</a>' +
+      '<p class="small muted mt">按钮会直达闽江学院的<strong>统一身份认证</strong>页面，用学号密码登录（密码只交给学校系统）。登录成功后会直接进入<strong>教学管理信息服务平台</strong>。</p>' +
+      '<div class="tip">🔐 本程序<strong>不接触、不保存、不上传你的密码</strong>。</div>' +
+      '<div class="tip success">💡 <strong>导完课表记得回到本页</strong> —— 切回来时我们会自动提醒你进入下一步。</div>' +
       '</div>' +
 
-      /* ③ 去导入（切回来会高亮这一块） */
+      /* 第二步：去导入（切回来会高亮这一块） */
       '<div class="card" id="go-import-card">' +
-      '<h3 style="margin-top:0">📥 第三步：把刚下载的课表导进来</h3>' +
+      '<h3 style="margin-top:0">📥 第二步：把刚下载的课表导进来</h3>' +
       '<p class="small muted">导入时会<strong>自动识别你的姓名和学号</strong>，你只需要核对课程。</p>' +
       '<a class="btn btn-primary btn-block btn-xl" href="#/import" id="go-import">去导入课表 →</a>' +
       (hasCourses
